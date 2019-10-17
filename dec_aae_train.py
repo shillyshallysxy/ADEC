@@ -15,13 +15,13 @@ def train(dataset,
           initialize_iteration=50000,
           finetune_iteration=100000,
           learn_rate=1e-3,
-          prior_type='mixGaussian',
+          prior_type='normal',
           pretrained_ae_ckpt_path=None,
           pretrained_aae_ckpt_path=None):
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-
+    print("using prior: ", prior_type)
     if dataset=='MNIST':
         data = MNIST()
     else:
@@ -43,6 +43,7 @@ def train(dataset,
     # phase 1: parameter initialization
     log_interval = 5000
     if pretrained_ae_ckpt_path is None:
+        print("pre training auto encoder")
         model = DEC(params={
             "encoder_dims": encoder_dims,
             "n_clusters": data.num_classes,
@@ -91,6 +92,7 @@ def train(dataset,
         ae_ckpt_path = pretrained_ae_ckpt_path
 
     if pretrained_aae_ckpt_path is None:
+        print("pre training adversarial auto encoder")
         aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt')
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
