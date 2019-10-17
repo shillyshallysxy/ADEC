@@ -7,6 +7,9 @@ import numpy as np
 import prior_factory as prior
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+import logging
+
+logging.basicConfig(filename="base.log", level=logging.INFO)
 
 def train(dataset,
           batch_size=256,
@@ -21,7 +24,7 @@ def train(dataset,
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-    print("using prior: ", prior_type)
+    logging.info("using prior: ", prior_type)
     if dataset=='MNIST':
         data = MNIST()
     else:
@@ -43,7 +46,7 @@ def train(dataset,
     # phase 1: parameter initialization
     log_interval = 5000
     if pretrained_ae_ckpt_path is None:
-        print("pre training auto encoder")
+        logging.info("pre training auto encoder")
         model = DEC(params={
             "encoder_dims": encoder_dims,
             "n_clusters": data.num_classes,
@@ -65,7 +68,7 @@ def train(dataset,
                     _, loss = sess.run([sub_ae.optimizer, sub_ae.loss], feed_dict={sub_ae.input_: batch_x, \
                                                                                    sub_ae.keep_prob: 0.8})
                     if iter_%log_interval==0:
-                        print("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
+                        logging.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
 
                 # assign pretrained sub_ae's weight
                 encoder_w_assign_op, encoder_b_assign_op = model.ae.layers[i].get_assign_ops( sub_ae.layers[0] )
@@ -85,14 +88,14 @@ def train(dataset,
                 _, loss = sess.run([model.ae.optimizer, model.ae.loss], feed_dict={model.ae.input_: batch_x, \
                                                                                    model.ae.keep_prob: 1.0})
                 if iter_%log_interval==0:
-                    print("[AE-finetune] iter: {}\tloss: {}".format(iter_, loss))
+                    logging.info("[AE-finetune] iter: {}\tloss: {}".format(iter_, loss))
             ae_saver.save(sess, ae_ckpt_path)
 
     else:
         ae_ckpt_path = pretrained_ae_ckpt_path
 
     if pretrained_aae_ckpt_path is None:
-        print("pre training adversarial auto encoder")
+        logging.info("pre training adversarial auto encoder")
         aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt')
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
@@ -124,8 +127,8 @@ def train(dataset,
                 tot_loss = ae_loss + d_loss + g_loss
                 #
                 if iter_%500 == 0:
-                    # print cost every epoch
-                    print("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                    # logging.info cost every epoch
+                    logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                         iter_, tot_loss, ae_loss, d_loss, g_loss))
                     z_s = sess.run((dec_aae_model.z), feed_dict=train_dec_feed)
                     X_tsne = TSNE(n_components=2, learning_rate=100).fit_transform(z_s)
@@ -221,15 +224,15 @@ def train(dataset,
                 tot_loss = ae_loss + d_loss + g_loss
 
                 if iter_ % 140 == 0:
-                    # print cost every epoch
-                    # print("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                    # logging.info cost every epoch
+                    # logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                     #     cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
                     # ==========================adversial part ============================
-                    print("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
+                    logging.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
                                                                   dec_aae_model.dec.cluster_acc(batch_y, pred)))
             total_y = np.reshape(np.array(total_y), [-1])
             total_pred = np.reshape(np.array(total_pred), [-1])
-            print("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
+            logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
             dec_saver.save(sess, dec_ckpt_path)
             saver.save(sess, t_ckpt_path)
@@ -286,7 +289,7 @@ def eval(dataset,
         total_y = np.reshape(np.array(total_y), [-1])
         total_pred = np.reshape(np.array(total_pred), [-1])
         total_z = np.reshape(np.array(total_z), [-1, dec_aae_model.z_dim])
-        print("[Total DEC EVAL] acc: {}".format(dec_aae_model.dec.cluster_acc(total_y, total_pred)))
+        logging.info("[Total DEC EVAL] acc: {}".format(dec_aae_model.dec.cluster_acc(total_y, total_pred)))
         total_z = total_z[:1000, :]
         from sklearn.manifold import TSNE
         import matplotlib.pyplot as plt
