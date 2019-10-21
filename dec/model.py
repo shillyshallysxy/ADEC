@@ -1,8 +1,8 @@
-import tensorflow as tf
 from sklearn.cluster import KMeans
-import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
-
+import numpy as np
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 class AssignableDense(object):
     def __init__(self, input_, units, activation=tf.nn.relu):
@@ -232,7 +232,7 @@ class DEC_AAE(object):
         self.train_op_ae = tf.train.AdamOptimizer(learn_rate).minimize(self.ae_loss, var_list=self.ae_vars)
         self.train_op_d = tf.train.AdamOptimizer(learn_rate / 5).minimize(self.D_loss, var_list=self.d_vars)
         self.train_op_g = tf.train.AdamOptimizer(learn_rate).minimize(self.G_loss, var_list=self.g_vars)
-        self.train_op_dec = tf.train.AdamOptimizer(learn_rate).minimize(self.dec_loss, var_list=self.dec_vars)
+        self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
         self.train_op_idec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.idec_loss, var_list=self.idec_vars)
 
         self.y = self.dec.ae.decoder

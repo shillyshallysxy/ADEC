@@ -63,8 +63,8 @@ def gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
         return z
 
 def gaussian_mixture(batch_size, n_dim=2, n_labels=10, x_var=0.5, y_var=0.1, label_indices=None):
-    if n_dim != 2:
-        raise Exception("n_dim must be 2.")
+    # if n_dim != 2:
+    #     raise Exception("n_dim must be 2.")
 
     def sample(x, y, label, n_labels):
         shift = 1.4

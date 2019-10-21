@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from imageio import imsave
 from cv2 import resize as imresize
+from sklearn.manifold import TSNE
 import cv2
 
 class Plot_Reproduce_Performance():
@@ -113,11 +114,18 @@ class Plot_Manifold_Learning_Result():
     def save_scattered_image(self, z, id, name='scattered_image.jpg'):
         N = 10
         plt.figure(figsize=(8, 6))
-        plt.scatter(z[:, 0], z[:, 1], c=np.argmax(id, 1), marker='o', edgecolor='none', cmap=discrete_cmap(N, 'jet'))
+
+        if len(z[0]) == 2:
+            plt.scatter(z[:, 0], z[:, 1], c=np.argmax(id, 1), marker='o', edgecolor='none', cmap=discrete_cmap(N, 'jet'))
+            axes = plt.gca()
+            axes.set_xlim([-4.5, 4.5])
+            axes.set_ylim([-4.5, 4.5])
+        else:
+            z_tsne = TSNE(n_components=2, learning_rate=100).fit_transform(z)
+            plt.scatter(z_tsne[:, 0], z_tsne[:, 1], c=np.argmax(id, 1), marker='o', edgecolor='none',
+                        cmap=discrete_cmap(N, 'jet'))
         plt.colorbar(ticks=range(N))
-        axes = plt.gca()
-        axes.set_xlim([-4.5, 4.5])
-        axes.set_ylim([-4.5, 4.5])
+
         plt.grid(True)
         plt.savefig(self.DIR + "/" + name)
 

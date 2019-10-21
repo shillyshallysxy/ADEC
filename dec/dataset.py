@@ -1,7 +1,7 @@
-import tensorflow as tf
-import numpy as np
 import random
 import math
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
     
 class Dataset():
     def __init__(self, train_x=None, train_y=None, test_x=None, test_y=None):

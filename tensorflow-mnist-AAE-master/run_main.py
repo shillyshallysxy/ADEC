@@ -167,7 +167,7 @@ def main(args):
 
     n_hidden = args.n_hidden
     dim_img = IMAGE_SIZE_MNIST**2  # number of pixels for a MNIST image
-    dim_z = 2                      # to visualize learned manifold
+    dim_z = 10                      # to visualize learned manifold
 
     # train
     n_epochs = args.num_epochs
@@ -236,7 +236,7 @@ def main(args):
         PRR.save_images(x_PRR_img, name='input.jpg')
 
     # Plot for manifold learning result
-    if PMLR and dim_z == 2:
+    if PMLR:
 
         PMLR = plot_utils.Plot_Manifold_Learning_Result(RESULTS_DIR, PMLR_n_img_x, PMLR_n_img_y, IMAGE_SIZE_MNIST, IMAGE_SIZE_MNIST, PMLR_resize_factor, PMLR_z_range)
 
@@ -248,7 +248,7 @@ def main(args):
     # train
     total_batch = int(n_samples / batch_size)
     min_tot_loss = 1e99
-
+    print("using prior: {}".format(args.prior_type))
     with tf.Session() as sess:
 
         sess.run(tf.global_variables_initializer(), feed_dict={keep_prob : 0.9})
@@ -321,14 +321,14 @@ def main(args):
                     PRR.save_images(y_PRR_img, name="/PRR_epoch_%02d" %(epoch) + ".jpg")
 
                 # Plot for manifold learning result
-                if PMLR and dim_z == 2:
+                if PMLR and dim_z==2:
                     y_PMLR = sess.run(decoded, feed_dict={z_in: PMLR.z, keep_prob : 1})
                     y_PMLR_img = y_PMLR.reshape(PMLR.n_tot_imgs, IMAGE_SIZE_MNIST, IMAGE_SIZE_MNIST)
                     PMLR.save_images(y_PMLR_img, name="/PMLR_epoch_%02d" % (epoch) + ".jpg")
 
-                    # plot distribution of labeled images
-                    z_PMLR = sess.run(z, feed_dict={x_hat: x_PMLR, keep_prob : 1})
-                    PMLR.save_scattered_image(z_PMLR,id_PMLR, name="/PMLR_map_epoch_%02d" % (epoch) + ".jpg")
+                # plot distribution of labeled images
+                z_PMLR = sess.run(z, feed_dict={x_hat: x_PMLR, keep_prob : 1})
+                PMLR.save_scattered_image(z_PMLR,id_PMLR, name="/PMLR_map_epoch_%02d" % (epoch) + ".jpg")
 
 if __name__ == '__main__':
 
