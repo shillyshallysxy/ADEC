@@ -142,7 +142,7 @@ def train(dataset,
         aae_ckpt_path = pretrained_aae_ckpt_path
     # phase 2: parameter optimization
 
-    exit()
+    # exit()
     dec_ckpt_path = os.path.join('dec_ckpt', 'model.ckpt')
     t_ckpt_path = os.path.join('adver_ckpt', 'model2.ckpt')
     with tf.Session(config=config) as sess:
@@ -183,7 +183,7 @@ def train(dataset,
             # per one epoch
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True, epoch=1)):
-                if iter_ % 140 == 0:
+                if iter_ % 100 == 0:
                     q = sess.run(dec_aae_model.dec.q, feed_dict={dec_aae_model.input_: data.train_x,
                                                                  dec_aae_model.batch_size: data.train_x.shape[0],
                                                                  dec_aae_model.keep_prob: 1.0})
@@ -195,40 +195,40 @@ def train(dataset,
                                   dec_aae_model.dec.p: batch_p,
                                   dec_aae_model.keep_prob: 0.8,}
 
-                _, loss, pred = sess.run([dec_aae_model.train_op_idec,
-                                             dec_aae_model.idec_loss, dec_aae_model.dec.pred],
+                _, loss, pred = sess.run([dec_aae_model.train_op_dec,
+                                             dec_aae_model.dec_loss, dec_aae_model.dec.pred],
                                          feed_dict=train_dec_feed)
 
                 total_y.append(batch_y)
                 total_pred.append(pred)
 
-                # # ==========================adversial part ============================
-                # z_sample, z_id_one_hot, z_id_ = \
-                #     prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim)
-                # train_dec_feed.update({
-                #                   dec_aae_model.z_sample: z_sample,
-                #                   })
+                # ==========================adversial part ============================
+                z_sample, z_id_one_hot, z_id_ = \
+                    prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim)
+                train_dec_feed.update({
+                                  dec_aae_model.z_sample: z_sample,
+                                  })
 
                 # discriminator loss
                 # _, d_loss = sess.run(
                 #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
-                #
+                d_loss = 0
+
                 # generator loss
-                # for _ in range(2):
-                #     _, g_loss = sess.run(
-                #         (dec_aae_model.train_op_g, dec_aae_model.G_loss),
-                #         feed_dict=train_dec_feed)
+                for _ in range(2):
+                    _, g_loss = sess.run(
+                        (dec_aae_model.train_op_g, dec_aae_model.G_loss),
+                        feed_dict=train_dec_feed)
 
-                # g_loss = 0
                 # reconstruction loss
-                # _, ae_loss = sess.run(
-                #     (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
-                # tot_loss = ae_loss + d_loss + g_loss
+                _, ae_loss = sess.run(
+                    (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
+                tot_loss = ae_loss + d_loss + g_loss
 
-                if iter_ % 140 == 0:
+                if iter_ % 100 == 0:
                     # logging.info cost every epoch
-                    # logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
-                    #     cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
+                    logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                        cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
                     # ==========================adversial part ============================
                     logging.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
                                                                   dec_aae_model.dec.cluster_acc(batch_y, pred)))
@@ -236,7 +236,7 @@ def train(dataset,
             total_pred = np.reshape(np.array(total_pred), [-1])
             logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
-            dec_saver.save(sess, dec_ckpt_path)
+            # dec_saver.save(sess, dec_ckpt_path)
             saver.save(sess, t_ckpt_path)
 
 
@@ -315,8 +315,8 @@ if __name__=="__main__":
           dataset="MNIST",
           pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
           # pretrained_ae_ckpt_path=None,
-          # pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt",
-          pretrained_aae_ckpt_path=None,
+          pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt-100000",
+          # pretrained_aae_ckpt_path=None,
           )
 
     # eval(batch_size=args['batch_size'],
