@@ -16,13 +16,24 @@ def discrete_cmap(N, base_cmap=None):
     return base.from_list(cmap_name, color_list, N)
 
 
-def save_scattered_image(z, id, path='./results/scattered_image.jpg'):
+def save_scattered_image(z, id_, path='./results/scattered_image.jpg'):
+    """
+    :param z:  z空间编码，shape=[N, feature_dims]
+    :param id_:  z空间编码对应的label，shape=[N, 1] 或 shape=[N, ] 或 shape=[N, n_cluster](即 one-hot)
+    :param path:  保存的图片存放的路径
+    :return:
+    """
     N = 10
     plt.figure(figsize=(8, 6))
-    if len(id.shape) == 2:
-        c = np.argmax(id, 1)
+    if len(id_.shape) == 2:
+        if id_.shape[1] == 1:
+            c = np.reshape(id_, [-1])
+        else:
+            c = np.argmax(id_, 1)
+    elif len(id_.shape) == 1:
+        c = id_
     else:
-        c = id
+        raise ValueError("label不支持该Shape的输入: {}".format(id_.shape))
     if len(z[0]) == 2:
         plt.scatter(z[:, 0], z[:, 1], c=c, marker='o', edgecolor='none', cmap=discrete_cmap(N, 'jet'))
         axes = plt.gca()

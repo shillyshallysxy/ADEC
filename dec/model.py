@@ -4,19 +4,27 @@ import numpy as np
 import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
 
+
 class AssignableDense(object):
-    def __init__(self, input_, units, activation=tf.nn.relu):
+    def __init__(self, input_, units, activation=tf.nn.relu, keep_prob=None,
+                 w_init=tf.random_normal_initializer(stddev=0.01),
+                 b_init=tf.constant_initializer(0.),
+                 name=""):
         self.activation = activation
-        self.w = tf.Variable(tf.random_normal(shape=(int(input_.shape[-1]), units), stddev=0.01), name='w')
-        self.b = tf.Variable(tf.zeros(shape=(units,)), name='b')
+        self.keep_prob = keep_prob
+        self.w = tf.get_variable(shape=(int(input_.shape[-1]), units), name='w{}'.format(name), initializer=w_init)
+        self.b = tf.get_variable(shape=(units,), name='b{}'.format(name), initializer=b_init)
         
     def get_assign_ops(self, from_dense):
         return [tf.assign(self.w, from_dense.w), tf.assign(self.b, from_dense.b)]
     
     def apply(self, x):
-        if self.activation is None:
-            return tf.matmul(x, self.w) + self.b
-        return self.activation(tf.matmul(x, self.w) + self.b)
+        if self.keep_prob is not None:
+            x = tf.nn.dropout(x, keep_prob=self.keep_prob)
+        x = tf.matmul(x, self.w) + self.b
+        if self.activation is not None:
+            x = self.activation(x)
+        return x
 
 
 class StackedAutoEncoder(object):
@@ -25,13 +33,15 @@ class StackedAutoEncoder(object):
         
         layer_dims = [input_dim]+encoder_dims
         for i in range(1, len(layer_dims)):
-            if i==1:
-                sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], decode_activation=False)
-            elif i==len(layer_dims)-1:
-                sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], encode_activation=False)
-            else:
-                sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1])
-            self.layerwise_autoencoders.append(sub_ae)          
+            name = "sae{}".format(i)
+            with tf.variable_scope(name):
+                if i==1:
+                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], decode_activation=False)
+                elif i==len(layer_dims)-1:
+                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], encode_activation=False)
+                else:
+                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1])
+                self.layerwise_autoencoders.append(sub_ae)
 
 
 class AutoEncoder(object):
@@ -41,42 +51,43 @@ class AutoEncoder(object):
         self.keep_prob = tf.placeholder(tf.float32)
         
         self.layers = []
-        w_init = tf.keras.initializers.glorot_normal()
+        # w_init = tf.keras.initializers.glorot_normal()
+        w_init = tf.random_normal_initializer(stddev=0.01)
         b_init = tf.constant_initializer(0.)
 
         with tf.variable_scope("encoder"):
             # initializers
             layer = self.input_
-            w = list()
-            b = list()
             for i, dim in enumerate(encoder_dims):
-                # 1st hidden layer
-                w.append(tf.get_variable('w{}'.format(i), [layer.get_shape()[1], dim], initializer=w_init))
-                b.append(tf.get_variable('b{}'.format(i), [dim], initializer=b_init))
-                layer = tf.matmul(layer, w[i]) + b[i]
-                if i != len(encoder_dims) - 1:
-                    layer = tf.nn.relu(layer)
-                    layer = tf.nn.dropout(layer, keep_prob=self.keep_prob)
+                with tf.variable_scope("fully_layer_{}".format(i)):
+                    # 1st hidden layer
+                    if i != len(encoder_dims) - 1:
+                        dense = AssignableDense(layer, units=dim, activation=tf.nn.relu, keep_prob=self.keep_prob,
+                                                w_init=w_init, b_init=b_init)
+                    else:
+                        dense = AssignableDense(layer, units=dim, activation=None, keep_prob=self.keep_prob,
+                                                w_init=w_init, b_init=b_init)
+                    layer = dense.apply(layer)
+                    self.layers.append(dense)
             self.encoder = layer
             # self.encoder = self._fully_layer(self.input_, encoder_dims, encode_activation)
 
         with tf.variable_scope("decoder"):
             decoder_dims = list(reversed(encoder_dims[:-1])) + [input_dim]
             layer = self.encoder
-            w = list()
-            b = list()
             for i, dim in enumerate(decoder_dims):
-                # 1st hidden layer
-                w.append(tf.get_variable('w{}'.format(i), [layer.get_shape()[1], dim], initializer=w_init))
-                b.append(tf.get_variable('b{}'.format(i), [dim], initializer=b_init))
-                layer = tf.matmul(layer, w[i]) + b[i]
-                if i != len(decoder_dims) - 1:
-                    layer = tf.nn.relu(layer)
-                    layer = tf.nn.dropout(layer, keep_prob=self.keep_prob)
-                else:
-                    layer = tf.nn.sigmoid(layer)
-            # self.decoder = self._fully_layer(self.encoder, decoder_dims, decode_activation)
+                with tf.variable_scope("fully_layer_{}".format(i)):
+                    # 1st hidden layer
+                    if i != len(encoder_dims) - 1:
+                        dense = AssignableDense(layer, units=dim, activation=tf.nn.relu, keep_prob=self.keep_prob,
+                                                w_init=w_init, b_init=b_init)
+                    else:
+                        dense = AssignableDense(layer, units=dim, activation=None, keep_prob=self.keep_prob,
+                                                w_init=w_init, b_init=b_init)
+                    layer = dense.apply(layer)
+                    self.layers.append(dense)
             self.decoder = layer
+            # self.decoder = self._fully_layer(self.encoder, decoder_dims, decode_activation)
 
         with tf.name_scope("sae-train"):
             self.loss = tf.losses.mean_squared_error(self.input_, self.decoder)
@@ -87,17 +98,17 @@ class AutoEncoder(object):
                                                        staircase=True)
             self.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(self.loss)
     
-    def _fully_layer(self, x, dims, last_activation=False):
+    def _fully_layer(self, x, dims, last_activation=False, name=""):
         layer = x
         for i, dim in enumerate(dims):
-            layer = tf.nn.dropout(layer, keep_prob=self.keep_prob)
-            if last_activation==False and i==len(dims)-1:
-                dense = AssignableDense(layer, units=dim, activation=None)
-            else:
-                dense = AssignableDense(layer, units=dim, activation=tf.nn.relu)
-            self.layers.append(dense)
-            layer = dense.apply(layer)
-            
+            with tf.variable_scope("fully_layer_{}_{}".format(name, i)):
+                layer = tf.nn.dropout(layer, keep_prob=self.keep_prob)
+                if last_activation==False and i==len(dims)-1:
+                    dense = AssignableDense(layer, units=dim, activation=None)
+                else:
+                    dense = AssignableDense(layer, units=dim, activation=tf.nn.relu)
+                self.layers.append(dense)
+                layer = dense.apply(layer)
         return layer
 
     
@@ -261,7 +272,7 @@ class DEC_AAE(object):
         self.train_op_ae = tf.train.AdamOptimizer(learn_rate).minimize(self.ae_loss, var_list=self.ae_vars)
         self.train_op_d = tf.train.AdamOptimizer(learn_rate / 5).minimize(self.D_loss, var_list=self.d_vars)
         self.train_op_g = tf.train.AdamOptimizer(learn_rate/10).minimize(self.G_loss, var_list=self.g_vars)
-        self.train_op_dec = tf.train.AdamOptimizer(learn_rate/100, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
+        self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
         self.train_op_idec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.idec_loss, var_list=self.idec_vars)
 
         self.y = self.dec.ae.decoder

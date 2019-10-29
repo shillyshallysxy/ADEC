@@ -8,16 +8,20 @@ import logging
 import plot_utils as pu
 import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
+from multiprocessing.pool import Pool
+
 
 logging.basicConfig(filename="base.log",
                     format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                     filemode='a',
                     level=logging.INFO)
+tf.reset_default_graph()
 
 
 def train(dataset,
           batch_size=256,
-          encoder_dims=[1000, 1000, 10],
+          # encoder_dims=[1000, 1000, 10],
+          encoder_dims=[500, 500, 2000, 10],
           discriminator_dims=[10, 1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
@@ -29,6 +33,8 @@ def train(dataset,
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     logging.info("using prior: {}".format(prior_type))
+
+    pool_ = Pool(2)
 
     if dataset == 'MNIST':
         data = MNIST()
@@ -53,6 +59,7 @@ def train(dataset,
     if pretrained_ae_ckpt_path is None:
         logging.info("pre training auto encoder")
         sae = StackedAutoEncoder(encoder_dims=encoder_dims, input_dim=data.feature_dim)
+        # tttttt = tf.trainable_variables()
         ae_ckpt_path = os.path.join('ae_ckpt', 'model.ckpt')
 
         with tf.Session(config=config) as sess:
@@ -88,10 +95,22 @@ def train(dataset,
                                                                                                            dec_aae_model.dec.ae.keep_prob: 1.0})
                 if iter_%log_interval==0:
                     logging.info("[AE-finetune] iter: {}\tloss: {}".format(iter_, loss))
+                if iter_ % (2*log_interval) == 0:
+                    xmlr_x = data.train_x[:10000, :]
+                    xmlr_id = data.train_y[:10000]
+                    z = sess.run(dec_aae_model.z,
+                                 feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0})
+                    pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_ae_map_{}.jpg".format(iter_)))
+                    # pu.save_scattered_image(z, xmlr_id, "./results/z_ae_map_{}.jpg".format(iter_))
             ae_saver.save(sess, ae_ckpt_path)
 
     else:
         ae_ckpt_path = pretrained_ae_ckpt_path
+
+    pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
+    pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用
+
+    exit()
 
     if pretrained_aae_ckpt_path is None:
         logging.info("pre training adversarial auto encoder")
@@ -172,7 +191,7 @@ def train(dataset,
         # plt.scatter(X_tsne[:10, 0], X_tsne[:10, 1], c=[0] * 10)
         # plt.colorbar()
         # plt.show()
-        for cur_epoch in range(100):
+        for cur_epoch in range(50):
             # z = sess.run(dec_aae_model.z,
             #              feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
             # assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
@@ -212,26 +231,32 @@ def train(dataset,
                 # discriminator loss
                 # _, d_loss = sess.run(
                 #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
-                d_loss = 0
+                # d_loss = 0
 
                 # generator loss
-                for _ in range(2):
-                    _, g_loss = sess.run(
-                        (dec_aae_model.train_op_g, dec_aae_model.G_loss),
-                        feed_dict=train_dec_feed)
+                # _, g_loss = sess.run(
+                #     (dec_aae_model.train_op_g, dec_aae_model.G_loss),
+                #     feed_dict=train_dec_feed)
 
                 # reconstruction loss
-                _, ae_loss = sess.run(
-                    (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
-                tot_loss = ae_loss + d_loss + g_loss
+                # _, ae_loss = sess.run(
+                #     (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
+                # tot_loss = ae_loss + d_loss + g_loss
 
                 if iter_ % 100 == 0:
                     # logging.info cost every epoch
-                    logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
-                        cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
+                    # logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                    #     cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
                     # ==========================adversial part ============================
                     logging.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
                                                                   dec_aae_model.dec.cluster_acc(batch_y, pred)))
+            # if cur_epoch % 4 == 0:
+                # xmlr_x = data.train_x[:10000, :]
+                # xmlr_id = data.train_y[:10000]
+                # z = sess.run(dec_aae_model.z,
+                #              feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0})
+                # pu.save_scattered_image(z, xmlr_id, "./results/z_adec_map_{}.jpg".format(cur_epoch))
+
             total_y = np.reshape(np.array(total_y), [-1])
             total_pred = np.reshape(np.array(total_pred), [-1])
             logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
@@ -313,8 +338,8 @@ if __name__=="__main__":
 
     train(batch_size=args['batch_size'],
           dataset="MNIST",
-          pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
-          # pretrained_ae_ckpt_path=None,
+          # pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
+          pretrained_ae_ckpt_path=None,
           pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt-100000",
           # pretrained_aae_ckpt_path=None,
           )
