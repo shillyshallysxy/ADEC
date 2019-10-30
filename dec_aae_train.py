@@ -22,7 +22,7 @@ def train(dataset,
           batch_size=256,
           # encoder_dims=[1000, 1000, 10],
           encoder_dims=[500, 500, 2000, 10],
-          discriminator_dims=[10, 1000, 1],
+          discriminator_dims=[1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
           learn_rate=1e-3,
@@ -34,7 +34,7 @@ def train(dataset,
     config.gpu_options.allow_growth = True
     logging.info("using prior: {}".format(prior_type))
 
-    pool_ = Pool(2)
+    pool_ = Pool(4)
 
     if dataset == 'MNIST':
         data = MNIST()
@@ -51,10 +51,10 @@ def train(dataset,
     })
 
     ae_saver = tf.train.Saver(var_list=dec_aae_model.ae_vars, max_to_keep=None)
-    aae_saver = tf.train.Saver(var_list=dec_aae_model.d_vars+dec_aae_model.ae_vars, max_to_keep=20)
+    aae_saver = tf.train.Saver(var_list=dec_aae_model.d_vars+dec_aae_model.ae_vars, max_to_keep=None)
     dec_saver = tf.train.Saver(var_list=dec_aae_model.dec_vars, max_to_keep=None)
     saver = tf.train.Saver(var_list=tf.trainable_variables(), max_to_keep=None)
-    # phase 1: parameter initialization
+    # phase 1: ae parameter initialization
     log_interval = 5000
     if pretrained_ae_ckpt_path is None:
         logging.info("pre training auto encoder")
@@ -107,19 +107,16 @@ def train(dataset,
     else:
         ae_ckpt_path = pretrained_ae_ckpt_path
 
-    pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
-    pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用
-
-    exit()
-
+    # exit()
+    # phase 2: aae parameter initialization
     if pretrained_aae_ckpt_path is None:
         logging.info("pre training adversarial auto encoder")
         aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt')
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
-            # ae_saver.restore(sess, ae_ckpt_path)
+            ae_saver.restore(sess, ae_ckpt_path)
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
-                                                                                       is_train_set=True, iteration=100000)):
+                                                                                       is_train_set=True, iteration=10000)):
                 train_dec_feed = {dec_aae_model.input_: batch_x,
                                   dec_aae_model.batch_size: batch_x.shape[0],
                                   dec_aae_model.keep_prob: 0.9,}
@@ -148,49 +145,53 @@ def train(dataset,
                     # logging.info cost every epoch
                     logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                         iter_, tot_loss, ae_loss, d_loss, g_loss))
-                if iter_ % 5000 == 0:
-                    # logging.info cost every epoch
                     xmlr_x = data.train_x[:10000, :]
                     xmlr_id = data.train_y[:10000]
                     z = sess.run(dec_aae_model.z,
                                  feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0})
-                    pu.save_scattered_image(z, xmlr_id, "./results/z_map_{}.jpg".format(iter_))
-
+                    # pu.save_scattered_image(z, xmlr_id, "./results/z_map_{}.jpg".format(iter_))
+                    pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_aae_map_{}.jpg".format(iter_)))
+                if iter_ % 5000 == 0:
+                    # logging.info cost every epoch
                     aae_saver.save(sess, aae_ckpt_path, global_step=iter_)
     else:
         aae_ckpt_path = pretrained_aae_ckpt_path
-    # phase 2: parameter optimization
 
-    # exit()
+    # phase 3: parameter optimization
     dec_ckpt_path = os.path.join('dec_ckpt', 'model.ckpt')
-    t_ckpt_path = os.path.join('adver_ckpt', 'model2.ckpt')
+    t_ckpt_path = os.path.join('adver_ckpt', 'model.ckpt')
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
-        # ae_saver.restore(sess, ae_ckpt_path)
-        aae_saver.restore(sess, aae_ckpt_path)
-        # dec_saver.restore(sess, dec_ckpt_path)
-        # saver.restore(sess, t_ckpt_path)
 
-        # initialize mu
-        z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
-        assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
-        _ = sess.run(assign_mu_op)
+        retrain = False
+        dec_mode = False
+        if dec_mode:
+            if retrain:
+                logging.info("retraining the dec")
+                saver.restore(sess, t_ckpt_path)
+                bais = 50
+            else:
+                logging.info("training the dec")
+                ae_saver.restore(sess, ae_ckpt_path)
+                bais = 0
+                # initialize mu
+                z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
+                assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
+                _ = sess.run(assign_mu_op)
+        else:
+            if retrain:
+                logging.info("retraining the adec")
+                bais = 100
+                saver.restore(sess, t_ckpt_path)
+            else:
+                logging.info("training the adec")
+                aae_saver.restore(sess, aae_ckpt_path)
+                bais = 0
+                # initialize mu
+                z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
+                assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
+                _ = sess.run(assign_mu_op)
 
-        # # show z space
-        # q, mu = sess.run([dec_aae_model.dec.q, dec_aae_model.dec.mu], feed_dict={dec_aae_model.input_: data.train_x,
-        #                                              dec_aae_model.batch_size: data.train_x.shape[0],
-        #                                              dec_aae_model.keep_prob: 1.0})
-        # p = dec_aae_model.dec.target_distribution(q)
-        # total_z = np.concatenate((mu,  z[:1000, :]), axis=0)
-        # X_tsne = TSNE(n_components=2, learning_rate=100).fit_transform(total_z)
-        # plt.figure(1)
-        # plt.scatter(X_tsne[:, 0], X_tsne[:, 1], c=[0]*10 + list(data.train_y[:1000]))
-        # plt.colorbar()
-        # plt.show()
-        # plt.figure(2)
-        # plt.scatter(X_tsne[:10, 0], X_tsne[:10, 1], c=[0] * 10)
-        # plt.colorbar()
-        # plt.show()
         for cur_epoch in range(50):
             # z = sess.run(dec_aae_model.z,
             #              feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
@@ -214,6 +215,30 @@ def train(dataset,
                                   dec_aae_model.dec.p: batch_p,
                                   dec_aae_model.keep_prob: 0.8,}
 
+                # ==========================adversial part ============================
+                z_sample, z_id_one_hot, z_id_ = \
+                    prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim)
+                train_dec_feed.update({
+                                  dec_aae_model.z_sample: z_sample,
+                                  })
+                if not dec_mode:
+                    # reconstruction loss
+                    _, ae_loss = sess.run(
+                        (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
+
+                    # discriminator loss
+                    # _, d_loss = sess.run(
+                    #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
+                    # d_loss = 0
+
+                    # generator loss
+                    _, g_loss = sess.run(
+                        (dec_aae_model.train_op_g, dec_aae_model.G_loss),
+                        feed_dict=train_dec_feed)
+
+                # tot_loss = ae_loss + d_loss + g_loss
+                # ==========================adversial part ============================
+
                 _, loss, pred = sess.run([dec_aae_model.train_op_dec,
                                              dec_aae_model.dec_loss, dec_aae_model.dec.pred],
                                          feed_dict=train_dec_feed)
@@ -221,48 +246,30 @@ def train(dataset,
                 total_y.append(batch_y)
                 total_pred.append(pred)
 
-                # ==========================adversial part ============================
-                z_sample, z_id_one_hot, z_id_ = \
-                    prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim)
-                train_dec_feed.update({
-                                  dec_aae_model.z_sample: z_sample,
-                                  })
-
-                # discriminator loss
-                # _, d_loss = sess.run(
-                #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
-                # d_loss = 0
-
-                # generator loss
-                # _, g_loss = sess.run(
-                #     (dec_aae_model.train_op_g, dec_aae_model.G_loss),
-                #     feed_dict=train_dec_feed)
-
-                # reconstruction loss
-                # _, ae_loss = sess.run(
-                #     (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
-                # tot_loss = ae_loss + d_loss + g_loss
-
                 if iter_ % 100 == 0:
                     # logging.info cost every epoch
                     # logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                     #     cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
                     # ==========================adversial part ============================
-                    logging.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
+                    logging.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                                   dec_aae_model.dec.cluster_acc(batch_y, pred)))
-            # if cur_epoch % 4 == 0:
-                # xmlr_x = data.train_x[:10000, :]
-                # xmlr_id = data.train_y[:10000]
-                # z = sess.run(dec_aae_model.z,
-                #              feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0})
-                # pu.save_scattered_image(z, xmlr_id, "./results/z_adec_map_{}.jpg".format(cur_epoch))
+            if (cur_epoch+1) % 5 == 0:
+                xmlr_x = data.train_x[:10000, :]
+                xmlr_id = data.train_y[:10000]
+                z, xmlr_pred_id = sess.run([dec_aae_model.z, dec_aae_model.dec.pred],
+                             feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0,
+                                        dec_aae_model.batch_size: xmlr_x.shape[0]})
+                pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_adec_map_{}.jpg".format(cur_epoch+bais), xmlr_pred_id))
 
             total_y = np.reshape(np.array(total_y), [-1])
             total_pred = np.reshape(np.array(total_pred), [-1])
-            logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch, loss,
+            logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
             # dec_saver.save(sess, dec_ckpt_path)
             saver.save(sess, t_ckpt_path)
+
+    pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
+    pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用
 
 
 def eval(dataset,
@@ -338,9 +345,9 @@ if __name__=="__main__":
 
     train(batch_size=args['batch_size'],
           dataset="MNIST",
-          # pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
-          pretrained_ae_ckpt_path=None,
-          pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt-100000",
+          pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
+          # pretrained_ae_ckpt_path=None,
+          pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt-10000",
           # pretrained_aae_ckpt_path=None,
           )
 

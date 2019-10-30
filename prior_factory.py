@@ -119,9 +119,11 @@ def get_sample(prior_type, batch_size, z_dim):
     elif prior_type == 'normal':
         samples = gaussian(batch_size, z_dim, use_label_info=False)
         z_id_ = None
-    else:
+    elif prior_type == 'uniform':
         samples = uniform(batch_size, z_dim, label_indices=None)
         z_id_ = None
+    else:
+        raise ValueError("没有这种类型的先验定义")
     if z_id_ is not None:
         z_id_one_hot_vector = np.zeros((batch_size, 10))
         z_id_one_hot_vector[np.arange(batch_size), z_id_] = 1
