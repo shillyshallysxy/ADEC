@@ -133,7 +133,6 @@ class DEC(object):
             self.optimizer = tf.train.AdamOptimizer(0.001).minimize(self.loss)
 #             self.optimizer = tf.train.AdadeltaOptimizer(0.001).minimize(self.loss)
             
-    
     def get_assign_cluster_centers_op(self, features):
         # init mu
         print("Kmeans train start.")
@@ -280,7 +279,8 @@ class DEC_AAE(object):
         self.train_op_g = tf.train.MomentumOptimizer(learn_rate/100, 0.99).minimize(self.G_loss, var_list=self.g_vars)
         self.train_op_dec = tf.train.MomentumOptimizer(learn_rate/10, 0.99).minimize(self.dec_loss, var_list=self.dec_vars)
 
-        # self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
+        # self.train_op_dec = tf.train.AdamOptimizer(learn_rate,
+        # beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
         self.train_op_idec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.idec_loss, var_list=self.idec_vars)
 
         self.y = self.dec.ae.decoder

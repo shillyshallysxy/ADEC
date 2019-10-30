@@ -6,8 +6,6 @@ from math import sin,cos,sqrt
 
 def uniform(batch_size, n_dim, n_labels=10, minv=-1, maxv=1, label_indices=None):
     if label_indices is not None:
-        if n_dim != 2 or n_labels != 10:
-            raise Exception("n_dim must be 2 and n_labels must be 10.")
 
         def sample(label, n_labels):
             num = int(np.ceil(np.sqrt(n_labels)))
@@ -122,6 +120,9 @@ def get_sample(prior_type, batch_size, z_dim):
     elif prior_type == 'uniform':
         samples = uniform(batch_size, z_dim, label_indices=None)
         z_id_ = None
+    elif prior_type == 'uniform_lab':
+        z_id_ = np.random.randint(0, 10, size=[batch_size])
+        samples = uniform(batch_size, z_dim, label_indices=z_id_)
     else:
         raise ValueError("没有这种类型的先验定义")
     if z_id_ is not None:
@@ -133,13 +134,6 @@ def get_sample(prior_type, batch_size, z_dim):
 
 
 if __name__ == "__main__":
-    a,b,c = get_sample("mixGaussian",1000,10)
-    from sklearn.manifold import TSNE
-    import matplotlib.pyplot as plt
-    X_tsne = TSNE(n_components=2, learning_rate=100).fit_transform(a)
-    plt.scatter(X_tsne[:, 0], X_tsne[:, 1])
-    # plt.subplot(122)
-    # plt.scatter(X_pca[:, 0], X_pca[:, 1], c=iris.target)
-    plt.colorbar()
-    plt.show()
-    print(1)
+    a, b, c = get_sample("uniform_lab", 5000, 10)
+    import plot_utils as pu
+    pu.save_scattered_image(a, c, "./results/uniform_lab.jpg")

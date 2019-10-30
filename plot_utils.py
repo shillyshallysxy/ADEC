@@ -17,6 +17,10 @@ def discrete_cmap(N, base_cmap=None):
 
 
 def reshape_c(id_):
+    """
+    :param id_: z空间编码对应的label，shape=[N, 1] 或 shape=[N, ] 或 shape=[N, n_cluster](即 one-hot)
+    :return: shape=[N, ]
+    """
     if len(id_.shape) == 2:
         if id_.shape[1] == 1:
             c = np.reshape(id_, [-1])
@@ -66,9 +70,3 @@ def save_scattered_image(z, id_, path='./results/scattered_image.jpg', cmp=None)
         plt.savefig(temp_path)
         plt.close()
 
-
-if __name__ == "__main__":
-    path = './results/scattered_image.jpg'
-    a = path.rpartition(".")
-    path = "".join((a[0], "_pred", a[1], a[2]))
-    print(a)
