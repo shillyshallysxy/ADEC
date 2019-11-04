@@ -81,6 +81,18 @@ def train(dataset,
             # exit()
             assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
             _ = sess.run(assign_mu_op)
+            # for i in range(1):
+            #     z_ = z[i*10000: (i+1)*10000, :]
+            #     y_true = data.train_y[i*10000: (i+1)*10000]
+            #     from sklearn.manifold import TSNE
+            #     z_ = TSNE(n_components=2, learning_rate=100).fit_transform(z_)
+            #     print(z_.shape)
+            #     kmeans = KMeans(n_clusters=10, n_init=20)
+            #     y_pred = kmeans.fit_predict(z_)
+            #     print("acc {}: {}:".format(i, pu.cluster_acc(y_true, y_pred)))
+            #     pu.save_scattered_image(z_, y_true, './results/scattered_image_10d_{}.jpg'.format(i), y_pred)
+            # print(z.shape)
+            # exit()
 
         iter_switch = 201
         for cur_epoch in range(100):

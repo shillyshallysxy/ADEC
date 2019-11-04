@@ -2,7 +2,8 @@
 Most codes from https://github.com/musyoku/adversarial-autoencoder/blob/master/aae/sampler.py
 """
 import numpy as np
-from math import sin,cos,sqrt
+from math import sin, cos, sqrt
+
 
 def uniform(batch_size, n_dim, n_labels=10, minv=-1, maxv=1, label_indices=None):
     if label_indices is not None:
@@ -25,10 +26,9 @@ def uniform(batch_size, n_dim, n_labels=10, minv=-1, maxv=1, label_indices=None)
         z = np.random.uniform(minv, maxv, (batch_size, n_dim)).astype(np.float32)
     return z
 
+
 def gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False):
     if use_label_info:
-        if n_dim != 2 or n_labels != 10:
-            raise Exception("n_dim must be 2 and n_labels must be 10.")
 
         def sample(n_labels):
             x, y = np.random.normal(mean, var, (2,))
@@ -60,9 +60,8 @@ def gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
         z = np.random.normal(mean, var, (batch_size, n_dim)).astype(np.float32)
         return z
 
+
 def gaussian_mixture(batch_size, n_dim=2, n_labels=10, x_var=0.5, y_var=0.1, label_indices=None):
-    # if n_dim != 2:
-    #     raise Exception("n_dim must be 2.")
 
     def sample(x, y, label, n_labels):
         shift = 1.4
@@ -85,9 +84,8 @@ def gaussian_mixture(batch_size, n_dim=2, n_labels=10, x_var=0.5, y_var=0.1, lab
 
     return z
 
+
 def swiss_roll(batch_size, n_dim=2, n_labels=10, label_indices=None):
-    if n_dim != 2:
-        raise Exception("n_dim must be 2.")
 
     def sample(label, n_labels):
         uni = np.random.uniform(0.0, 1.0) / float(n_labels) + float(label) / float(n_labels)
