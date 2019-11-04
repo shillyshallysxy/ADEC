@@ -21,7 +21,7 @@ tf.reset_default_graph()
 def train(dataset,
           batch_size=256,
           # encoder_dims=[1000, 1000, 10],
-          encoder_dims=[500, 500, 2000, 2],
+          encoder_dims=[500, 500, 2000, 10],
           discriminator_dims=[1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
@@ -192,6 +192,16 @@ def train(dataset,
                 z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
                 assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
                 _ = sess.run(assign_mu_op)
+                # xmlr_x = data.train_x[:10000, :]
+                # xmlr_id = data.train_y[:10000]
+                # z, xmlr_pred_id = sess.run([dec_aae_model.z, dec_aae_model.dec.pred],
+                #                            feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0,
+                #                                       dec_aae_model.batch_size: xmlr_x.shape[0]})
+                # pool_.apply_async(pu.save_scattered_image,
+                #                   (z, xmlr_id, "./results/z_init_map_{}.jpg".format(0 + bais), xmlr_pred_id))
+                # pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
+                # pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用
+                # exit()
         else:
             if retrain:
                 logging.info("retraining the adec")
