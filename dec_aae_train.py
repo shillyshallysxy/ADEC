@@ -21,12 +21,12 @@ tf.reset_default_graph()
 def train(dataset,
           batch_size=256,
           # encoder_dims=[1000, 1000, 10],
-          encoder_dims=[500, 500, 2000, 10],
+          encoder_dims=[500, 500, 2000, 2],
           discriminator_dims=[1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
           learn_rate=1e-3,
-          prior_type='uniform',
+          prior_type='uniform_lab',
           pretrained_ae_ckpt_path=None,
           pretrained_aae_ckpt_path=None):
 
@@ -175,11 +175,15 @@ def train(dataset,
 
         retrain = False
         dec_mode = True
+        idec_mode = False
+        #  dec_mode = False, idec_mode = True  ==> IDEC
+        #  dec_mode = True, idec_mode = False  ==> DEC
+        #  dec_mode = False, idec_mode = False  ==> ADEC
         if dec_mode:
             if retrain:
                 logging.info("retraining the dec")
                 saver.restore(sess, t_ckpt_path)
-                bais = 50
+                bais = 100
             else:
                 logging.info("training the dec")
                 ae_saver.restore(sess, ae_ckpt_path)
@@ -195,7 +199,8 @@ def train(dataset,
                 saver.restore(sess, t_ckpt_path)
             else:
                 logging.info("training the adec")
-                aae_saver.restore(sess, aae_ckpt_path)
+                # aae_saver.restore(sess, aae_ckpt_path)
+                ae_saver.restore(sess, ae_ckpt_path)
                 bais = 0
                 # initialize mu
                 z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
@@ -203,11 +208,11 @@ def train(dataset,
                 _ = sess.run(assign_mu_op)
 
         for cur_epoch in range(100):
-            if cur_epoch < 2:
-                z = sess.run(dec_aae_model.z,
-                             feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
-                assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
-                _ = sess.run(assign_mu_op)
+            # if cur_epoch < 2:
+            #     z = sess.run(dec_aae_model.z,
+            #                  feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
+            #     assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
+            #     _ = sess.run(assign_mu_op)
 
             total_y = list()
             total_pred = list()
@@ -232,30 +237,39 @@ def train(dataset,
                 train_dec_feed.update({
                                   dec_aae_model.z_sample: z_sample,
                                   })
-                if not dec_mode:
-                    # reconstruction loss
-                    _, ae_loss = sess.run(
-                        (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
+                # if not dec_mode:
+                    # # reconstruction loss
+                    # _, ae_loss = sess.run(
+                    #     (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
+                    #
+                    # # discriminator loss
+                    # # _, d_loss = sess.run(
+                    # #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
+                    #
+                    # # generator loss
+                    # _, g_loss = sess.run(
+                    #     (dec_aae_model.train_op_g, dec_aae_model.G_loss),
+                    #     feed_dict=train_dec_feed)
 
-                    # discriminator loss
-                    # _, d_loss = sess.run(
-                    #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
-
-                    # generator loss
-                    _, g_loss = sess.run(
-                        (dec_aae_model.train_op_g, dec_aae_model.G_loss),
-                        feed_dict=train_dec_feed)
 
                 # tot_loss = ae_loss + d_loss + g_loss
                 # ==========================adversial part ============================
 
-                # # reconstruction loss IDEC
-                # _, ae_loss = sess.run(
-                #     (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
-
-                _, loss, pred = sess.run([dec_aae_model.train_op_dec,
-                                             dec_aae_model.dec_loss, dec_aae_model.dec.pred],
-                                         feed_dict=train_dec_feed)
+                if dec_mode:
+                    # logging.info("DEC mode")
+                    _, loss, pred = sess.run([dec_aae_model.train_op_dec,
+                                              dec_aae_model.dec_loss, dec_aae_model.dec.pred],
+                                             feed_dict=train_dec_feed)
+                elif idec_mode:
+                    # logging.info("IDEC mode")
+                    _, loss, pred = sess.run([dec_aae_model.train_op_idec,
+                                              dec_aae_model.idec_loss, dec_aae_model.dec.pred],
+                                             feed_dict=train_dec_feed)
+                else:
+                    # logging.info("ADEC mode")
+                    _, loss, pred = sess.run([dec_aae_model.train_op_adec,
+                                              dec_aae_model.adec_loss, dec_aae_model.dec.pred],
+                                             feed_dict=train_dec_feed)
 
                 total_y.append(batch_y)
                 total_pred.append(pred)
@@ -280,7 +294,7 @@ def train(dataset,
             logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
             # dec_saver.save(sess, dec_ckpt_path)
-            saver.save(sess, t_ckpt_path)
+        saver.save(sess, t_ckpt_path)
 
     pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
     pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用
