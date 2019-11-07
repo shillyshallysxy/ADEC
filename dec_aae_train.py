@@ -1,7 +1,7 @@
 # -*- encoding:utf8 -*-import tensorflow as tf
 from dec.dataset import *
 import os
-import configargparse
+import argparse
 from dec.model import *
 import prior_factory as prior
 import logging
@@ -11,10 +11,19 @@ tf.disable_v2_behavior()
 from multiprocessing.pool import Pool
 
 
-logging.basicConfig(filename="base.log",
+logging.basicConfig(filename="./base.log",
                     format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                     filemode='a',
                     level=logging.INFO)
+
+logger = logging.getLogger()
+formatter = logging.Formatter('%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+file_handler = logging.FileHandler("./base.log")
+file_handler.setFormatter(formatter)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 tf.reset_default_graph()
 
 
@@ -32,14 +41,19 @@ def train(dataset,
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
-    logging.info("using prior: {}".format(prior_type))
+    logger.info("using prior: {}".format(prior_type))
 
     pool_ = Pool(4)
 
     if dataset == 'MNIST':
         data = MNIST()
+        data_name = ""
+    elif dataset == "StackOverflow":
+        data = StackOverflow()
+        data_name = dataset
     else:
         assert False, "Undefined dataset."
+    logger.info("running on data set: {}".format(dataset))
 
     dec_aae_model = DEC_AAE(params={
         "encoder_dims": encoder_dims,
@@ -57,10 +71,10 @@ def train(dataset,
     # phase 1: ae parameter initialization
     log_interval = 5000
     if pretrained_ae_ckpt_path is None:
-        logging.info("pre training auto encoder")
+        logger.info("pre training auto encoder")
         sae = StackedAutoEncoder(encoder_dims=encoder_dims, input_dim=data.feature_dim)
         # tttttt = tf.trainable_variables()
-        ae_ckpt_path = os.path.join('ae_ckpt', 'model.ckpt')
+        ae_ckpt_path = os.path.join('ae_ckpt', 'model{}.ckpt'.format(data_name))
 
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
@@ -74,7 +88,7 @@ def train(dataset,
                     _, loss = sess.run([sub_ae.optimizer, sub_ae.loss], feed_dict={sub_ae.input_: batch_x,
                                                                                    sub_ae.keep_prob: 0.8})
                     if iter_%log_interval==0:
-                        logging.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
+                        logger.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
 
                 # assign pretrained sub_ae's weight
                 encoder_w_assign_op, encoder_b_assign_op = dec_aae_model.dec.ae.layers[i].get_assign_ops( sub_ae.layers[0] )
@@ -94,7 +108,7 @@ def train(dataset,
                 _, loss = sess.run([dec_aae_model.dec.ae.optimizer, dec_aae_model.dec.ae.loss], feed_dict={dec_aae_model.dec.ae.input_: batch_x,
                                                                                                            dec_aae_model.dec.ae.keep_prob: 1.0})
                 if iter_%log_interval==0:
-                    logging.info("[AE-finetune] iter: {}\tloss: {}".format(iter_, loss))
+                    logger.info("[AE-finetune] iter: {}\tloss: {}".format(iter_, loss))
                 if iter_ % (2*log_interval) == 0:
                     xmlr_x = data.train_x[:10000, :]
                     xmlr_id = data.train_y[:10000]
@@ -113,8 +127,8 @@ def train(dataset,
     # exit()
     # phase 2: aae parameter initialization
     if pretrained_aae_ckpt_path is None:
-        logging.info("pre training adversarial auto encoder")
-        aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt')
+        logger.info("pre training adversarial auto encoder")
+        aae_ckpt_path = os.path.join('aae_ckpt', 'model{}.ckpt'.format(data_name))
         # aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt-100000')
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
@@ -144,11 +158,11 @@ def train(dataset,
                 tot_loss = ae_loss + d_loss + g_loss
                 #
                 if iter_ % 2500 == 0:
-                    # logging.info cost every epoch
-                    logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                    # logger.info cost every epoch
+                    logger.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                         iter_, tot_loss, ae_loss, d_loss, g_loss))
                 if iter_ % 5000 == 0:
-                    # logging.info cost every epoch
+                    # logger.info cost every epoch
 
                     xmlr_x = data.train_x[:10000, :]
                     xmlr_id = data.train_y[:10000]
@@ -167,8 +181,8 @@ def train(dataset,
 
 
     # phase 3: parameter optimization
-    dec_ckpt_path = os.path.join('dec_ckpt', 'model.ckpt')
-    t_ckpt_path = os.path.join('adver_ckpt', 'model.ckpt')
+    dec_ckpt_path = os.path.join('dec_ckpt', 'model{}.ckpt'.format(data_name))
+    t_ckpt_path = os.path.join('adver_ckpt', 'model{}.ckpt'.format(data_name))
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
 
@@ -180,11 +194,11 @@ def train(dataset,
         #  dec_mode = False, idec_mode = False  ==> ADEC
         if dec_mode:
             if retrain:
-                logging.info("retraining the dec")
+                logger.info("retraining the dec")
                 saver.restore(sess, t_ckpt_path)
                 bais = 100
             else:
-                logging.info("training the dec")
+                logger.info("training the dec")
                 ae_saver.restore(sess, ae_ckpt_path)
                 bais = 0
                 # initialize mu
@@ -203,11 +217,11 @@ def train(dataset,
                 # exit()
         else:
             if retrain:
-                logging.info("retraining the adec")
+                logger.info("retraining the adec")
                 bais = 100
                 saver.restore(sess, t_ckpt_path)
             else:
-                logging.info("training the adec")
+                logger.info("training the adec")
                 # aae_saver.restore(sess, aae_ckpt_path)
                 ae_saver.restore(sess, ae_ckpt_path)
                 bais = 0
@@ -246,36 +260,20 @@ def train(dataset,
                 train_dec_feed.update({
                                   dec_aae_model.z_sample: z_sample,
                                   })
-                # if not dec_mode:
-                    # # reconstruction loss
-                    # _, ae_loss = sess.run(
-                    #     (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
-                    #
-                    # # discriminator loss
-                    # # _, d_loss = sess.run(
-                    # #     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
-                    #
-                    # # generator loss
-                    # _, g_loss = sess.run(
-                    #     (dec_aae_model.train_op_g, dec_aae_model.G_loss),
-                    #     feed_dict=train_dec_feed)
-
-
-                # tot_loss = ae_loss + d_loss + g_loss
                 # ==========================adversial part ============================
 
                 if dec_mode:
-                    # logging.info("DEC mode")
+                    # logger.info("DEC mode")
                     _, loss, pred = sess.run([dec_aae_model.train_op_dec,
                                               dec_aae_model.dec_loss, dec_aae_model.dec.pred],
                                              feed_dict=train_dec_feed)
                 elif idec_mode:
-                    # logging.info("IDEC mode")
+                    # logger.info("IDEC mode")
                     _, loss, pred = sess.run([dec_aae_model.train_op_idec,
                                               dec_aae_model.idec_loss, dec_aae_model.dec.pred],
                                              feed_dict=train_dec_feed)
                 else:
-                    # logging.info("ADEC mode")
+                    # logger.info("ADEC mode")
                     _, loss, pred = sess.run([dec_aae_model.train_op_adec,
                                               dec_aae_model.adec_loss, dec_aae_model.dec.pred],
                                              feed_dict=train_dec_feed)
@@ -284,11 +282,11 @@ def train(dataset,
                 total_pred.append(pred)
 
                 if iter_ % 100 == 0:
-                    # logging.info cost every epoch
-                    # logging.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                    # logger.info cost every epoch
+                    # logger.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                     #     cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
                     # ==========================adversial part ============================
-                    logging.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
+                    logger.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                                   dec_aae_model.dec.cluster_acc(batch_y, pred)))
             if (cur_epoch+1) % 5 == 0 or cur_epoch == 0:
                 xmlr_x = data.train_x[:10000, :]
@@ -300,7 +298,7 @@ def train(dataset,
 
             total_y = np.reshape(np.array(total_y), [-1])
             total_pred = np.reshape(np.array(total_pred), [-1])
-            logging.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
+            logger.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
             # dec_saver.save(sess, dec_ckpt_path)
         saver.save(sess, t_ckpt_path)
@@ -360,7 +358,7 @@ def eval(dataset,
         total_y = np.reshape(np.array(total_y), [-1])
         total_pred = np.reshape(np.array(total_pred), [-1])
         total_z = np.reshape(np.array(total_z), [-1, dec_aae_model.z_dim])
-        logging.info("[Total DEC EVAL] acc: {}".format(dec_aae_model.dec.cluster_acc(total_y, total_pred)))
+        logger.info("[Total DEC EVAL] acc: {}".format(dec_aae_model.dec.cluster_acc(total_y, total_pred)))
         total_z = total_z[:1000, :]
         from sklearn.manifold import TSNE
         import matplotlib.pyplot as plt
@@ -370,22 +368,28 @@ def eval(dataset,
         plt.show()
 
 
-if __name__=="__main__":
-    parser = configargparse.ArgParser()
-    parser.add("--batch-size", dest="batch_size", help="Train Batch Size", default=256, type=int)
-    parser.add("--gpu-index", dest="gpu_index", help="GPU Index Number", default="0", type=str)
-    parser.add("--prior-type", dest="prior_type", help="Prior Type", default="mixGaussian", type=str)
+if __name__ == "__main__":
+    desc = "Tensorflow implementation of (ADEC)"
 
-    args = vars(parser.parse_args())
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument("--batch-size", dest="batch_size", help="Train Batch Size", default=256, type=int)
+    parser.add_argument("--gpu-index", dest="gpu_index", help="GPU Index Number", default="0", type=str)
+    parser.add_argument("--prior_type", dest="prior_type",
+                        help="[mixGaussian, uniform, swiss_roll, normal]",
+                        default="uniform", type=str)
+    parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="StackOverflow", type=str)
 
-    os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu_index']
+    args = parser.parse_args()
 
-    train(batch_size=args['batch_size'],
-          dataset="MNIST",
-          pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
-          # pretrained_ae_ckpt_path=None,
-          # pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt",
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_index
+
+    train(batch_size=args.batch_size,
+          dataset=args.data_name,
+          # pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(args.data_name),
+          pretrained_ae_ckpt_path=None,
+          # pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
           pretrained_aae_ckpt_path=None,
+          prior_type=args.prior_type,
           )
 
     # eval(batch_size=args['batch_size'],

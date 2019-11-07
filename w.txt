@@ -1,1 +1,0 @@
-and relation identification between ACs are performed simultaneously using a PointerNet neural network. This improves the classification performance. In this research, the dependency relation is limited to within a paragraph, and the whole document cannot be used. There is also research on component classification using unsupervised learning. (Ferrara et al., 2017) proposed a

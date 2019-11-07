@@ -2,6 +2,7 @@ from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
+from sklearn.metrics import normalized_mutual_info_score
 
 
 def discrete_cmap(N, base_cmap=None):
@@ -84,3 +85,6 @@ def cluster_acc(y_true, y_pred):
     ind = linear_assignment(w.max() - w)
     num_ind = [w[i, j] for i, j in zip(*ind)]
     return sum(num_ind) * 1.0 / y_pred.size
+
+
+cluster_nmi = normalized_mutual_info_score

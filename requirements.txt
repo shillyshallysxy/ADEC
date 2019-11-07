@@ -1,3 +1,6 @@
+tensorflow
+matplotlib
+scipy
 configargparse
 numpy
 sklearn

@@ -37,9 +37,14 @@ def train(dataset,
 
     if dataset == 'MNIST':
         data = MNIST()
+        data_name = ""
+    elif dataset == "StackOverflow":
+        data = StackOverflow()
+        data_name = dataset
     else:
         assert False, "Undefined dataset."
 
+    print("running on data set: {}".format(dataset))
     dec_aae_model = DEC_AAE(params={
         "encoder_dims": encoder_dims,
         "n_clusters": data.num_classes,
@@ -58,8 +63,8 @@ def train(dataset,
     aae_ckpt_path = pretrained_aae_ckpt_path
 
     # phase 3: parameter optimization
-    dec_ckpt_path = os.path.join('dec_ckpt', 'model.ckpt')
-    t_ckpt_path = os.path.join('adver_ckpt', 'model.ckpt')
+    dec_ckpt_path = os.path.join('dec_ckpt', 'model{}.ckpt'.format(data_name))
+    t_ckpt_path = os.path.join('adver_ckpt', 'model{}.ckpt'.format(data_name))
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
 
@@ -301,12 +306,15 @@ if __name__=="__main__":
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu_index']
 
+    data_name = "StackOverflow"
+    # data_name = "MNIST"
+
     train(batch_size=args['batch_size'],
-          dataset="MNIST",
-          pretrained_ae_ckpt_path="./ae_ckpt/model.ckpt",
-          # pretrained_ae_ckpt_path=None,
-          pretrained_aae_ckpt_path="./aae_ckpt/model.ckpt",
-          # pretrained_aae_ckpt_path=None,
+          dataset=data_name,
+          # pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(data_name),
+          pretrained_ae_ckpt_path=None,
+          # pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(data_name),
+          pretrained_aae_ckpt_path=None,
           )
 
     # eval(batch_size=args['batch_size'],
