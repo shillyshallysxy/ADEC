@@ -33,3 +33,9 @@ def combinationSum(candidates, target):
 
     fetch_res(candidates, [], target)
     return res
+
+# import nltk
+# nltk.download()
+import sqlite3
+# import site
+# print(site.tsitepackages())

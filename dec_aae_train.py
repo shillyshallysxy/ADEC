@@ -29,8 +29,8 @@ tf.reset_default_graph()
 
 def train(dataset,
           batch_size=256,
-          # encoder_dims=[1000, 1000, 10],
-          encoder_dims=[500, 500, 2000, 10],
+          encoder_dims=[500, 500, 10],
+          # encoder_dims=[500, 500, 2000, 10],
           discriminator_dims=[1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
