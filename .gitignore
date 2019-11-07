@@ -10,3 +10,6 @@
 !*.gitignore
 !*.txt
 !*.md
+!*.vec
+!*.dic
+!*.mat
