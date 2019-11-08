@@ -24,12 +24,13 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+logger.info = print
 tf.reset_default_graph()
 
 
 def train(dataset,
           batch_size=256,
-          encoder_dims=[500, 500, 10],
+          encoder_dims=[500, 500, 2000, 20],
           # encoder_dims=[500, 500, 2000, 10],
           discriminator_dims=[1000, 1],
           initialize_iteration=50000,
@@ -385,10 +386,10 @@ if __name__ == "__main__":
 
     train(batch_size=args.batch_size,
           dataset=args.data_name,
-          # pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(args.data_name),
-          pretrained_ae_ckpt_path=None,
-          # pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
-          pretrained_aae_ckpt_path=None,
+          pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(args.data_name),
+          # pretrained_ae_ckpt_path=None,
+          pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
+          # pretrained_aae_ckpt_path=None,
           prior_type=args.prior_type,
           )
 
