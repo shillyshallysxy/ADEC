@@ -4,7 +4,9 @@ import os
 from time import time
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
+
 from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
@@ -208,10 +210,10 @@ if __name__ == "__main__":
     parser.add_argument('--pretrain_epochs', default=15, type=int)
     parser.add_argument('--update_interval', default=30, type=int)
     parser.add_argument('--tol', default=0.0001, type=float)
-    parser.add_argument('--ae_weights', default='/data/results/ae_weights.h5',
-                        help="/data/search_snippets/results/ae_weights.h5")
-    parser.add_argument('--save_dir', default='/data/results/',
-                        help="/data/search_snippets/results/")
+    parser.add_argument('--ae_weights', default='./data/results/ae_weights.h5',
+                        help="./data/search_snippets/results/ae_weights.h5")
+    parser.add_argument('--save_dir', default='./data/results/',
+                        help="./data/search_snippets/results/")
     args = parser.parse_args()
 
     if not os.path.exists(args.save_dir):
@@ -230,7 +232,8 @@ if __name__ == "__main__":
         raise Exception("Dataset not found!")
 
     print(args)
-
+    # print(os.path.abspath(args.save_dir))
+    # exit()
     # load dataset
     ####################################################################################
     x, y = load_data(args.dataset)
@@ -251,6 +254,13 @@ if __name__ == "__main__":
                      save_dir=args.save_dir)
     else:
         dec.autoencoder.load_weights(args.ae_weights)
+
+        y_pred = dec.fit(x, y=y, tol=args.tol, maxiter=0, batch_size=args.batch_size,
+                         update_interval=args.update_interval, save_dir=args.save_dir,
+                         rand_seed=0)
+        print('acc:', metrics.acc(y, y_pred))
+        print('nmi', metrics.nmi(y, y_pred))
+        # exit()
 
     dec.model.summary()
     t0 = time()

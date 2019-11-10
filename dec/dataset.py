@@ -63,3 +63,7 @@ class StackOverflow(Dataset):
         self.train_x, self.test_x, self.train_y, self.test_y = train_test_split(x, y, test_size=0.1, random_state=0)
         self.train_x, self.train_y = shuffle(self.train_x, self.train_y)
         del x, y
+
+
+if __name__ == "__main__":
+    data = MNIST()

@@ -80,24 +80,24 @@ def train(dataset,
             ae_saver.restore(sess, ae_ckpt_path)
             bais = 0
             # initialize mu
-            z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
+            z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.test_x, dec_aae_model.keep_prob: 1.0})
             # np.save("./results/z.npy", z)
             # np.save("./results/label.npy", data.train_y)
             # exit()
             assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
             _ = sess.run(assign_mu_op)
-            # for i in range(1):
-            #     z_ = z[i*10000: (i+1)*10000, :]
-            #     y_true = data.train_y[i*10000: (i+1)*10000]
-            #     from sklearn.manifold import TSNE
-            #     z_ = TSNE(n_components=2, learning_rate=100).fit_transform(z_)
-            #     print(z_.shape)
-            #     kmeans = KMeans(n_clusters=10, n_init=20)
-            #     y_pred = kmeans.fit_predict(z_)
-            #     print("acc {}: {}:".format(i, pu.cluster_acc(y_true, y_pred)))
-            #     pu.save_scattered_image(z_, y_true, './results/scattered_image_10d_{}.jpg'.format(i), y_pred)
-            # print(z.shape)
-            # exit()
+            for i in range(1):
+                z_ = z[i*10000: (i+1)*10000, :]
+                y_true = data.test_y[i*10000: (i+1)*10000]
+                from sklearn.manifold import TSNE
+                z_ = TSNE(n_components=2, learning_rate=100).fit_transform(z_)
+                print(z_.shape)
+                kmeans = KMeans(n_clusters=10, n_init=20)
+                y_pred = kmeans.fit_predict(z_)
+                print("acc {}: {}:".format(i, pu.cluster_acc(y_true, y_pred)))
+                pu.save_scattered_image(z_, y_true, './results/scattered_image_10d_{}.jpg'.format(i), y_pred)
+            print(z.shape)
+            exit()
 
         iter_switch = 201
         for cur_epoch in range(100):
@@ -306,15 +306,15 @@ if __name__=="__main__":
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args['gpu_index']
 
-    data_name = "StackOverflow"
-    # data_name = "MNIST"
+    # data_name = "StackOverflow"
+    data_name = "MNIST"
 
     train(batch_size=args['batch_size'],
           dataset=data_name,
-          # pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(data_name),
-          pretrained_ae_ckpt_path=None,
-          # pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(data_name),
-          pretrained_aae_ckpt_path=None,
+          pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(""),
+          # pretrained_ae_ckpt_path=None,
+          pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(""),
+          # pretrained_aae_ckpt_path=None,
           )
 
     # eval(batch_size=args['batch_size'],

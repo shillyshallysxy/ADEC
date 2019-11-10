@@ -24,21 +24,22 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-logger.info = print
+# logger.info = print
 tf.reset_default_graph()
 
 
 def train(dataset,
           batch_size=256,
+          # encoder_dims=[500, 500, 2000, 20],
           encoder_dims=[500, 500, 2000, 20],
-          # encoder_dims=[500, 500, 2000, 10],
           discriminator_dims=[1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
           learn_rate=1e-3,
           prior_type='uniform',
           pretrained_ae_ckpt_path=None,
-          pretrained_aae_ckpt_path=None):
+          pretrained_aae_ckpt_path=None,
+          update_interval=100):
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -70,42 +71,43 @@ def train(dataset,
     dec_saver = tf.train.Saver(var_list=dec_aae_model.dec_vars, max_to_keep=None)
     saver = tf.train.Saver(var_list=tf.trainable_variables(), max_to_keep=None)
     # phase 1: ae parameter initialization
-    log_interval = 5000
+    log_interval = 500
     if pretrained_ae_ckpt_path is None:
         logger.info("pre training auto encoder")
         sae = StackedAutoEncoder(encoder_dims=encoder_dims, input_dim=data.feature_dim)
-        # tttttt = tf.trainable_variables()
         ae_ckpt_path = os.path.join('ae_ckpt', 'model{}.ckpt'.format(data_name))
 
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
 
             # initialize sae
-            next_ = data.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
-            cur_ae_data = data.train_x
-            for i, sub_ae in enumerate(sae.layerwise_autoencoders):
-                # train sub_ae
-                for iter_, (batch_x, _, _) in enumerate(next_):
-                    _, loss = sess.run([sub_ae.optimizer, sub_ae.loss], feed_dict={sub_ae.input_: batch_x,
-                                                                                   sub_ae.keep_prob: 0.8})
-                    if iter_%log_interval==0:
-                        logger.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
-
-                # assign pretrained sub_ae's weight
-                encoder_w_assign_op, encoder_b_assign_op = dec_aae_model.dec.ae.layers[i].get_assign_ops( sub_ae.layers[0] )
-                decoder_w_assign_op, decoder_b_assign_op = dec_aae_model.dec.ae.layers[(i+1)*-1].get_assign_ops( sub_ae.layers[1] )
-                _ = sess.run([encoder_w_assign_op, encoder_b_assign_op,
-                              decoder_w_assign_op, decoder_b_assign_op])
-
-                # get next sub_ae's input
-                cur_ae_data = sess.run(sub_ae.encoder, feed_dict={sub_ae.input_: cur_ae_data,
-                                                                   sub_ae.keep_prob: 1.0})
-                embedding = Dataset(train_x=cur_ae_data, train_y=cur_ae_data)
-                next_ = embedding.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
+            # next_ = data.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
+            # cur_ae_data = data.train_x
+            # for i, sub_ae in enumerate(sae.layerwise_autoencoders):
+            #     # train sub_ae
+            #     for iter_, (batch_x, _, _) in enumerate(next_):
+            #         _, loss = sess.run([sub_ae.optimizer, sub_ae.loss], feed_dict={sub_ae.input_: batch_x,
+            #                                                                        sub_ae.keep_prob: 0.8})
+            #         if iter_%log_interval==0:
+            #             logger.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
+            #
+            #     # assign pretrained sub_ae's weight
+            #     encoder_w_assign_op, encoder_b_assign_op = dec_aae_model.dec.ae.layers[i].get_assign_ops( sub_ae.layers[0] )
+            #     decoder_w_assign_op, decoder_b_assign_op = dec_aae_model.dec.ae.layers[(i+1)*-1].get_assign_ops( sub_ae.layers[1] )
+            #     _ = sess.run([encoder_w_assign_op, encoder_b_assign_op,
+            #                   decoder_w_assign_op, decoder_b_assign_op])
+            #
+            #     # get next sub_ae's input
+            #     cur_ae_data = sess.run(sub_ae.encoder, feed_dict={sub_ae.input_: cur_ae_data,
+            #                                                        sub_ae.keep_prob: 1.0})
+            #     embedding = Dataset(train_x=cur_ae_data, train_y=cur_ae_data)
+            #     next_ = embedding.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
 
             # finetune AE
             for iter_, (batch_x, _, _) in enumerate(data.gen_next_batch(batch_size=batch_size, is_train_set=True,
-                                                                        iteration=finetune_iteration)):
+                                                                        # iteration=finetune_iteration,
+                                                                        epoch=12
+                                                                        )):
                 _, loss = sess.run([dec_aae_model.dec.ae.optimizer, dec_aae_model.dec.ae.loss], feed_dict={dec_aae_model.dec.ae.input_: batch_x,
                                                                                                            dec_aae_model.dec.ae.keep_prob: 1.0})
                 if iter_%log_interval==0:
@@ -216,6 +218,14 @@ def train(dataset,
                 # pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
                 # pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用
                 # exit()
+
+                total_y = data.train_y
+                total_pred = sess.run(dec_aae_model.dec.pred, feed_dict={dec_aae_model.input_: data.train_x,
+                                                                         dec_aae_model.batch_size: data.train_x.shape[
+                                                                             0],
+                                                                         dec_aae_model.keep_prob: 1.0})
+                logger.info("[Total DEC] epoch: {}\tacc: {}".format(-1,dec_aae_model.dec.cluster_acc(total_y,
+                                                                                                            total_pred)))
         else:
             if retrain:
                 logger.info("retraining the adec")
@@ -231,19 +241,22 @@ def train(dataset,
                 assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
                 _ = sess.run(assign_mu_op)
 
-        for cur_epoch in range(100):
+
+
+        for cur_epoch in range(10):
             # if cur_epoch < 2:
             #     z = sess.run(dec_aae_model.z,
-            #                  feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
-            #     assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
-            #     _ = sess.run(assign_mu_op)
-
-            total_y = list()
-            total_pred = list()
-            # per one epoch
+            #             #                  feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
+            #             #     assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
+            #             #     _ = sess.run(assign_mu_op)
+            #
+            #             # per one epoch
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
-                                                                                       is_train_set=True, epoch=1)):
-                if iter_ % 100 == 0:
+                                                                                       is_train_set=True,
+                                                                                       epoch=1,
+                                                                                       # iteration=500
+                                                                                       )):
+                if iter_ % update_interval == 0:
                     q = sess.run(dec_aae_model.dec.q, feed_dict={dec_aae_model.input_: data.train_x,
                                                                  dec_aae_model.batch_size: data.train_x.shape[0],
                                                                  dec_aae_model.keep_prob: 1.0})
@@ -253,7 +266,7 @@ def train(dataset,
                 train_dec_feed = {dec_aae_model.input_: batch_x,
                                   dec_aae_model.batch_size: batch_x.shape[0],
                                   dec_aae_model.dec.p: batch_p,
-                                  dec_aae_model.keep_prob: 0.8,}
+                                  dec_aae_model.keep_prob: 1.,}
 
                 # ==========================adversial part ============================
                 z_sample, z_id_one_hot, z_id_ = \
@@ -279,16 +292,13 @@ def train(dataset,
                                               dec_aae_model.adec_loss, dec_aae_model.dec.pred],
                                              feed_dict=train_dec_feed)
 
-                total_y.append(batch_y)
-                total_pred.append(pred)
-
-                if iter_ % 100 == 0:
+                # if iter_ % 100 == 0:
                     # logger.info cost every epoch
                     # logger.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
                     #     cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
                     # ==========================adversial part ============================
-                    logger.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
-                                                                  dec_aae_model.dec.cluster_acc(batch_y, pred)))
+                    # logger.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
+                    #                                               dec_aae_model.dec.cluster_acc(batch_y, pred)))
             if (cur_epoch+1) % 5 == 0 or cur_epoch == 0:
                 xmlr_x = data.train_x[:10000, :]
                 xmlr_id = data.train_y[:10000]
@@ -297,8 +307,10 @@ def train(dataset,
                                                       dec_aae_model.batch_size: xmlr_x.shape[0]})
                 pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_adec_map_{}.jpg".format(cur_epoch+bais), xmlr_pred_id))
 
-            total_y = np.reshape(np.array(total_y), [-1])
-            total_pred = np.reshape(np.array(total_pred), [-1])
+            total_y = data.train_y
+            total_pred = sess.run(dec_aae_model.dec.pred, feed_dict={dec_aae_model.input_: data.train_x,
+                                                         dec_aae_model.batch_size: data.train_x.shape[0],
+                                                         dec_aae_model.keep_prob: 1.0})
             logger.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
             # dec_saver.save(sess, dec_ckpt_path)
@@ -373,13 +385,13 @@ if __name__ == "__main__":
     desc = "Tensorflow implementation of (ADEC)"
 
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument("--batch-size", dest="batch_size", help="Train Batch Size", default=256, type=int)
+    parser.add_argument("--batch-size", dest="batch_size", help="Train Batch Size", default=64, type=int)
     parser.add_argument("--gpu-index", dest="gpu_index", help="GPU Index Number", default="0", type=str)
     parser.add_argument("--prior_type", dest="prior_type",
                         help="[mixGaussian, uniform, swiss_roll, normal]",
                         default="uniform", type=str)
     parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="StackOverflow", type=str)
-
+    parser.add_argument('--update_interval', default=500, type=int)
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_index
@@ -391,6 +403,7 @@ if __name__ == "__main__":
           pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
           # pretrained_aae_ckpt_path=None,
           prior_type=args.prior_type,
+          update_interval=args.update_interval,
           )
 
     # eval(batch_size=args['batch_size'],

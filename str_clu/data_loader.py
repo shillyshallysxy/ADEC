@@ -10,7 +10,7 @@ from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.preprocessing import MinMaxScaler
 
 
-def load_stackoverflow(data_path='data/stackoverflow/'):
+def load_stackoverflow(data_path='../data/stackoverflow/'):
 
     # load SO embedding
     with open(data_path + 'vocab_withIdx.dic', 'r', encoding="utf-8") as inp_indx, \

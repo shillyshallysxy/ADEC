@@ -52,7 +52,8 @@ class AutoEncoder(object):
         
         self.layers = []
         # w_init = tf.keras.initializers.glorot_normal()
-        w_init = tf.random_normal_initializer(stddev=0.01)
+        w_init = tf.keras.initializers.glorot_uniform()
+        # w_init = tf.random_normal_initializer(stddev=0.01)
         b_init = tf.constant_initializer(0.)
 
         with tf.variable_scope("encoder"):
@@ -96,8 +97,9 @@ class AutoEncoder(object):
                                                        decay_steps=20000,
                                                        decay_rate=0.1,
                                                        staircase=True)
-            self.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(self.loss)
-    
+            # self.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(self.loss)
+            self.optimizer = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.loss)
+
     def _fully_layer(self, x, dims, last_activation=False, name=""):
         layer = x
         for i, dim in enumerate(dims):
@@ -115,7 +117,7 @@ class AutoEncoder(object):
 class DEC(object):
     def __init__(self, params):
         self.n_cluster = params["n_clusters"]
-        self.kmeans = KMeans(n_clusters=params["n_clusters"], n_init=20)
+        self.kmeans = KMeans(n_clusters=params["n_clusters"], n_init=100)
         self.ae = AutoEncoder(params["encoder_dims"], params['input_dim'], encode_activation=False, decode_activation=False)
         self.alpha = params['alpha']
 
@@ -276,17 +278,21 @@ class DEC_AAE(object):
         self.adec_vars = self.dec_vars + self.de_vars + self.d_vars
 
         # 预训练阶段
-        pre_train_ae_learning_rate = 1e-1
-        self.train_op_ae = tf.train.MomentumOptimizer(pre_train_ae_learning_rate, 0.9).minimize(self.ae_loss, var_list=self.ae_vars)
+        pre_train_ae_learning_rate = 0.1
+        # self.train_op_ae = tf.train.MomentumOptimizer(pre_train_ae_learning_rate, 0.9).minimize(self.ae_loss, var_list=self.ae_vars)
         self.train_op_d = tf.train.MomentumOptimizer(pre_train_ae_learning_rate/5., 0.9).minimize(self.D_loss, var_list=self.d_vars)
         self.train_op_g = tf.train.MomentumOptimizer(pre_train_ae_learning_rate/5, 0.9).minimize(self.G_loss, var_list=self.g_vars)
+
+        # short text 预训练阶段
+        self.train_op_ae = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.ae_loss, var_list=self.ae_vars)
+        self.train_op_dec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.dec_loss, var_list=self.dec_vars)
         # ADEC阶段
         # self.train_op_ae = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.ae_loss, var_list=self.ae_vars)
         # self.train_op_d = tf.train.MomentumOptimizer(learn_rate / 5, 0.99).minimize(self.D_loss, var_list=self.d_vars)
         # self.train_op_g = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.G_loss, var_list=self.g_vars)
         # self.train_op_dec = tf.train.MomentumOptimizer(learn_rate/10, 0.99).minimize(self.dec_loss, var_list=self.dec_vars)
 
-        self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
+        # self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
         self.train_op_idec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.idec_loss, var_list=self.idec_vars)
         self.train_op_adec = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss, var_list=self.adec_vars)
         self.train_op_adec_s = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss_s, var_list=self.adec_vars)

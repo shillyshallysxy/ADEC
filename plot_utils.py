@@ -43,9 +43,10 @@ def save_scattered_image(z, id_, path='./results/scattered_image.jpg', cmp=None)
     :param cmp:  z空间编码对应的预测label，shape=[N, 1] 或 shape=[N, ] 或 shape=[N, n_cluster](即 one-hot)
     :return:
     """
-    N = 10
     plt.figure(figsize=(8, 6))
     c = reshape_c(id_)
+    N = len(np.unique(c))
+
     if len(z[0]) != 2:
         z = TSNE(n_components=2, learning_rate=100).fit_transform(z)
     plt.scatter(z[:, 0], z[:, 1], c=c, marker='o', edgecolor='none', cmap=discrete_cmap(N, 'jet'))
