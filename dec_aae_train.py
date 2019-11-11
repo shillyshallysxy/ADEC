@@ -190,12 +190,13 @@ def train(dataset,
         sess.run(tf.global_variables_initializer())
 
         retrain = False
-        dec_mode = True
-        idec_mode = False
+        dec_mode = False
+        idec_mode = True
+        best_score = 0.
         #  dec_mode = False, idec_mode = True  ==> IDEC
         #  dec_mode = True, idec_mode = False  ==> DEC
         #  dec_mode = False, idec_mode = False  ==> ADEC
-        if dec_mode:
+        if dec_mode or idec_mode:
             if retrain:
                 logger.info("retraining the dec")
                 saver.restore(sess, t_ckpt_path)
@@ -224,8 +225,8 @@ def train(dataset,
                                                                          dec_aae_model.batch_size: data.train_x.shape[
                                                                              0],
                                                                          dec_aae_model.keep_prob: 1.0})
-                logger.info("[Total DEC] epoch: {}\tacc: {}".format(-1,dec_aae_model.dec.cluster_acc(total_y,
-                                                                                                            total_pred)))
+                logger.info("[Total DEC] epoch: {}\tacc: {}".
+                            format(-1, dec_aae_model.dec.cluster_acc(total_y, total_pred)))
         else:
             if retrain:
                 logger.info("retraining the adec")
@@ -241,20 +242,11 @@ def train(dataset,
                 assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
                 _ = sess.run(assign_mu_op)
 
-
-
-        for cur_epoch in range(10):
-            # if cur_epoch < 2:
-            #     z = sess.run(dec_aae_model.z,
-            #             #                  feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
-            #             #     assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
-            #             #     _ = sess.run(assign_mu_op)
-            #
-            #             # per one epoch
+        for cur_epoch in range(1):
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
-                                                                                       epoch=1,
-                                                                                       # iteration=500
+                                                                                       # epoch=1,
+                                                                                       iteration=6000
                                                                                        )):
                 if iter_ % update_interval == 0:
                     q = sess.run(dec_aae_model.dec.q, feed_dict={dec_aae_model.input_: data.train_x,
@@ -299,6 +291,17 @@ def train(dataset,
                     # ==========================adversial part ============================
                     # logger.info("[DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                     #                                               dec_aae_model.dec.cluster_acc(batch_y, pred)))
+                if iter_ % 100 == 0:
+                    total_y = data.train_y
+                    total_pred = sess.run(dec_aae_model.dec.pred,
+                                          feed_dict={dec_aae_model.input_: data.train_x,
+                                                     dec_aae_model.batch_size: data.train_x.shape[0],
+                                                     dec_aae_model.keep_prob: 1.0})
+                    now_score = dec_aae_model.dec.cluster_acc(total_y, total_pred)
+                    if now_score > best_score:
+                        best_score = now_score
+                        saver.save(sess, t_ckpt_path)
+                    logger.info("[Total DEC] iteration: {}\tloss: {}\tacc: {}".format(iter_, loss, now_score))
             if (cur_epoch+1) % 5 == 0 or cur_epoch == 0:
                 xmlr_x = data.train_x[:10000, :]
                 xmlr_id = data.train_y[:10000]
@@ -314,7 +317,6 @@ def train(dataset,
             logger.info("[Total DEC] epoch: {}\tloss: {}\tacc: {}".format(cur_epoch+bais, loss,
                                                               dec_aae_model.dec.cluster_acc(total_y, total_pred)))
             # dec_saver.save(sess, dec_ckpt_path)
-        saver.save(sess, t_ckpt_path)
 
     pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程
     pool_.join()  # 等待进程池中的所有进程执行完毕，必须在close()之后调用

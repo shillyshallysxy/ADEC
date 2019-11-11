@@ -261,7 +261,7 @@ class DEC_AAE(object):
         self.D_loss = tf.reduce_mean(self.D_loss)
         self.G_loss = tf.reduce_mean(self.G_loss)
         self.dec_loss = self.dec.loss
-        self.idec_loss = tf.reduce_mean(self.dec_loss+self.ae_loss)
+        self.idec_loss = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss)
         # self.adec_loss = tf.reduce_mean(self.dec_loss+self.ae_loss+0.01*self.G_loss)
         self.adec_loss = tf.reduce_mean(self.dec_loss+self.ae_loss+0.1*self.G_loss+0.1*self.D_loss)
         self.adec_loss_s = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss+0.01*self.G_loss+0.01*self.D_loss)
@@ -285,14 +285,15 @@ class DEC_AAE(object):
 
         # short text 预训练阶段
         self.train_op_ae = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.ae_loss, var_list=self.ae_vars)
-        self.train_op_dec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.dec_loss, var_list=self.dec_vars)
+        # self.train_op_dec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.dec_loss, var_list=self.dec_vars)
+        # self.train_op_idec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.idec_loss, var_list=self.idec_vars)
         # ADEC阶段
         # self.train_op_ae = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.ae_loss, var_list=self.ae_vars)
         # self.train_op_d = tf.train.MomentumOptimizer(learn_rate / 5, 0.99).minimize(self.D_loss, var_list=self.d_vars)
         # self.train_op_g = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.G_loss, var_list=self.g_vars)
         # self.train_op_dec = tf.train.MomentumOptimizer(learn_rate/10, 0.99).minimize(self.dec_loss, var_list=self.dec_vars)
 
-        # self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
+        self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
         self.train_op_idec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.idec_loss, var_list=self.idec_vars)
         self.train_op_adec = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss, var_list=self.adec_vars)
         self.train_op_adec_s = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss_s, var_list=self.adec_vars)
