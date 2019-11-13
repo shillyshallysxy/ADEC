@@ -3,6 +3,7 @@ import matplotlib
 import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from sklearn.metrics import normalized_mutual_info_score
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 

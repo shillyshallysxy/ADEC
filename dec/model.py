@@ -101,13 +101,15 @@ class AutoEncoder(object):
 
         with tf.name_scope("sae-train"):
             self.loss = tf.losses.mean_squared_error(self.input_, self.decoder)
-            learning_rate = tf.train.exponential_decay(learning_rate=0.1, 
+            # ============ MNIST ==================
+            learning_rate = tf.train.exponential_decay(learning_rate=0.1,
                                                        global_step=tf.train.get_or_create_global_step(),
                                                        decay_steps=20000,
                                                        decay_rate=0.1,
                                                        staircase=True)
-            # self.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(self.loss)
-            self.optimizer = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.loss)
+            self.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(self.loss)
+            # ============ Stack Over Flow ==================
+            # self.optimizer = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.loss)
 
     def _fully_layer(self, x, dims, last_activation=False, name=""):
         layer = x
@@ -287,7 +289,7 @@ class DEC_AAE(object):
         # self.adec_vars = self.dec_vars + self.de_vars
         self.adec_vars = self.dec_vars + self.de_vars + self.d_vars
 
-        # 预训练阶段
+        # 预训练aae阶段
         pre_train_ae_learning_rate = 0.001
         # pre_train_method = tf.train.MomentumOptimizer
         pre_train_method = tf.train.AdamOptimizer
@@ -295,8 +297,7 @@ class DEC_AAE(object):
         self.train_op_d = pre_train_method(pre_train_ae_learning_rate/10., 0.9).minimize(self.D_loss, var_list=self.d_vars)
         self.train_op_g = pre_train_method(pre_train_ae_learning_rate, 0.9).minimize(self.G_loss, var_list=self.g_vars)
 
-        # short text 预训练阶段
-        # self.train_op_ae = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.ae_loss, var_list=self.ae_vars)
+        # short text 训练阶段
         # self.train_op_dec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.dec_loss, var_list=self.dec_vars)
         # self.train_op_idec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.idec_loss, var_list=self.idec_vars)
 

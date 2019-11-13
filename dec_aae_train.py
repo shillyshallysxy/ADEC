@@ -60,6 +60,7 @@ def train(dataset,
         w_init = "glorot_uniform"
         stack_ae = True
         update_interval = 100
+        aae_finetune_iteration = 50000
     else:
         assert False, "Undefined dataset."
     logger.info("running on data set: {}".format(dataset))
@@ -73,6 +74,17 @@ def train(dataset,
         "learn_rate": learn_rate,
         "w_init": w_init
     })
+    if dataset == 'MNIST':
+        learning_rate = tf.train.exponential_decay(learning_rate=0.1,
+                                                   global_step=tf.train.get_or_create_global_step(),
+                                                   decay_steps=20000,
+                                                   decay_rate=0.1,
+                                                   staircase=True)
+        dec_aae_model.dec.ae.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).\
+            minimize(dec_aae_model.dec.ae.loss)
+    elif dataset == "StackOverflow":
+        dec_aae_model.dec.ae.optimizer = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).\
+            minimize(dec_aae_model.dec.ae.loss)
 
     ae_saver = tf.train.Saver(var_list=dec_aae_model.ae_vars, max_to_keep=None)
     aae_saver = tf.train.Saver(var_list=dec_aae_model.d_vars+dec_aae_model.ae_vars, max_to_keep=None)
@@ -394,7 +406,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu-index", dest="gpu_index", help="GPU Index Number", default="0", type=str)
     parser.add_argument("--prior_type", dest="prior_type",
                         help="[mixGaussian, uniform, swiss_roll, normal, dirichlet]",
-                        default="uniform", type=str)
+                        default="dirichlet", type=str)
     parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="MNIST", type=str)
     args = parser.parse_args()
 
