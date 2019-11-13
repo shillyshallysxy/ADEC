@@ -24,22 +24,18 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-# logger.info = print
+logger.info = print
 tf.reset_default_graph()
 
 
 def train(dataset,
           batch_size=256,
-          # encoder_dims=[500, 500, 2000, 20],
-          encoder_dims=[500, 500, 2000, 20],
-          discriminator_dims=[1000, 1],
           initialize_iteration=50000,
           finetune_iteration=100000,
           learn_rate=1e-3,
           prior_type='uniform',
           pretrained_ae_ckpt_path=None,
-          pretrained_aae_ckpt_path=None,
-          update_interval=100):
+          pretrained_aae_ckpt_path=None):
 
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
@@ -51,10 +47,18 @@ def train(dataset,
         data = MNIST()
         data_name = ""
         w_init = "random_normal"
+        encoder_dims = [500, 500, 2000, 10]
+        discriminator_dims = [1000, 1]
+        stack_ae = False
+        update_interval = 500
     elif dataset == "StackOverflow":
         data = StackOverflow()
         data_name = dataset
+        encoder_dims = [500, 500, 2000, 20]
+        discriminator_dims = [1000, 1]
         w_init = "glorot_uniform"
+        stack_ae = True
+        update_interval = 100
     else:
         assert False, "Undefined dataset."
     logger.info("running on data set: {}".format(dataset))
@@ -82,34 +86,33 @@ def train(dataset,
 
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
+            if stack_ae:
+                # initialize sae
+                next_ = data.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
+                cur_ae_data = data.train_x
+                for i, sub_ae in enumerate(sae.layerwise_autoencoders):
+                    # train sub_ae
+                    for iter_, (batch_x, _, _) in enumerate(next_):
+                        _, loss = sess.run([sub_ae.optimizer, sub_ae.loss], feed_dict={sub_ae.input_: batch_x,
+                                                                                       sub_ae.keep_prob: 0.8})
+                        if iter_%log_interval==0:
+                            logger.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
 
-            # initialize sae
-            # next_ = data.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
-            # cur_ae_data = data.train_x
-            # for i, sub_ae in enumerate(sae.layerwise_autoencoders):
-            #     # train sub_ae
-            #     for iter_, (batch_x, _, _) in enumerate(next_):
-            #         _, loss = sess.run([sub_ae.optimizer, sub_ae.loss], feed_dict={sub_ae.input_: batch_x,
-            #                                                                        sub_ae.keep_prob: 0.8})
-            #         if iter_%log_interval==0:
-            #             logger.info("[SAE-{}] iter: {}\tloss: {}".format(i, iter_, loss))
-            #
-            #     # assign pretrained sub_ae's weight
-            #     encoder_w_assign_op, encoder_b_assign_op = dec_aae_model.dec.ae.layers[i].get_assign_ops( sub_ae.layers[0] )
-            #     decoder_w_assign_op, decoder_b_assign_op = dec_aae_model.dec.ae.layers[(i+1)*-1].get_assign_ops( sub_ae.layers[1] )
-            #     _ = sess.run([encoder_w_assign_op, encoder_b_assign_op,
-            #                   decoder_w_assign_op, decoder_b_assign_op])
-            #
-            #     # get next sub_ae's input
-            #     cur_ae_data = sess.run(sub_ae.encoder, feed_dict={sub_ae.input_: cur_ae_data,
-            #                                                        sub_ae.keep_prob: 1.0})
-            #     embedding = Dataset(train_x=cur_ae_data, train_y=cur_ae_data)
-            #     next_ = embedding.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
+                    # assign pretrained sub_ae's weight
+                    encoder_w_assign_op, encoder_b_assign_op = dec_aae_model.dec.ae.layers[i].get_assign_ops( sub_ae.layers[0] )
+                    decoder_w_assign_op, decoder_b_assign_op = dec_aae_model.dec.ae.layers[(i+1)*-1].get_assign_ops( sub_ae.layers[1] )
+                    _ = sess.run([encoder_w_assign_op, encoder_b_assign_op,
+                                  decoder_w_assign_op, decoder_b_assign_op])
+
+                    # get next sub_ae's input
+                    cur_ae_data = sess.run(sub_ae.encoder, feed_dict={sub_ae.input_: cur_ae_data,
+                                                                       sub_ae.keep_prob: 1.0})
+                    embedding = Dataset(train_x=cur_ae_data, train_y=cur_ae_data)
+                    next_ = embedding.gen_next_batch(batch_size=batch_size, is_train_set=True, iteration=initialize_iteration)
 
             # finetune AE
             for iter_, (batch_x, _, _) in enumerate(data.gen_next_batch(batch_size=batch_size, is_train_set=True,
-                                                                        # iteration=finetune_iteration,
-                                                                        epoch=12
+                                                                        iteration=finetune_iteration,
                                                                         )):
                 _, loss = sess.run([dec_aae_model.dec.ae.optimizer, dec_aae_model.dec.ae.loss], feed_dict={dec_aae_model.dec.ae.input_: batch_x,
                                                                                                            dec_aae_model.dec.ae.keep_prob: 1.0})
@@ -138,7 +141,7 @@ def train(dataset,
         # aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt-100000')
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
-            ae_saver.restore(sess, ae_ckpt_path)
+            # ae_saver.restore(sess, ae_ckpt_path)
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
                                                                                        iteration=10000)):
@@ -386,13 +389,12 @@ if __name__ == "__main__":
     desc = "Tensorflow implementation of (ADEC)"
 
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument("--batch-size", dest="batch_size", help="Train Batch Size", default=64, type=int)
+    parser.add_argument("--batch-size", dest="batch_size", help="Train Batch Size", default=256, type=int)
     parser.add_argument("--gpu-index", dest="gpu_index", help="GPU Index Number", default="0", type=str)
     parser.add_argument("--prior_type", dest="prior_type",
-                        help="[mixGaussian, uniform, swiss_roll, normal]",
+                        help="[mixGaussian, uniform, swiss_roll, normal, dirichlet]",
                         default="uniform", type=str)
-    parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="StackOverflow", type=str)
-    parser.add_argument('--update_interval', default=500, type=int)
+    parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="MNIST", type=str)
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_index
@@ -401,10 +403,9 @@ if __name__ == "__main__":
           dataset=args.data_name,
           pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(args.data_name),
           # pretrained_ae_ckpt_path=None,
-          pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
-          # pretrained_aae_ckpt_path=None,
+          # pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
+          pretrained_aae_ckpt_path=None,
           prior_type=args.prior_type,
-          update_interval=args.update_interval,
           )
 
     # eval(batch_size=args['batch_size'],

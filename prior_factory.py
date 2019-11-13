@@ -105,12 +105,18 @@ def swiss_roll(batch_size, n_dim=2, n_labels=10, label_indices=None):
     return z
 
 
-def get_sample(prior_type, batch_size, z_dim):
+def dirichlet(batch_size, n_dim=10):
+    alpha = np.ones(n_dim, dtype=np.float)*0.01
+    z = np.random.dirichlet(alpha, size=(batch_size, ))
+    return z
+
+
+def get_sample(prior_type, batch_size, z_dim, n_labels=10):
     if prior_type == 'mixGaussian':
-        z_id_ = np.random.randint(0, 10, size=[batch_size])
+        z_id_ = np.random.randint(0, n_labels, size=[batch_size])
         samples = gaussian_mixture(batch_size, z_dim, label_indices=z_id_)
     elif prior_type == 'swiss_roll':
-        z_id_ = np.random.randint(0, 10, size=[batch_size])
+        z_id_ = np.random.randint(0, n_labels, size=[batch_size])
         samples = swiss_roll(batch_size, z_dim, label_indices=z_id_)
     elif prior_type == 'normal':
         samples = gaussian(batch_size, z_dim, use_label_info=False)
@@ -119,8 +125,11 @@ def get_sample(prior_type, batch_size, z_dim):
         samples = uniform(batch_size, z_dim, label_indices=None)
         z_id_ = None
     elif prior_type == 'uniform_lab':
-        z_id_ = np.random.randint(0, 10, size=[batch_size])
+        z_id_ = np.random.randint(0, n_labels, size=[batch_size])
         samples = uniform(batch_size, z_dim, label_indices=z_id_)
+    elif prior_type == 'dirichlet':
+        z_id_ = np.random.randint(0, n_labels, size=[batch_size])
+        samples = dirichlet(batch_size, z_dim)
     else:
         raise ValueError("没有这种类型的先验定义")
     if z_id_ is not None:
