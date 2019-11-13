@@ -28,32 +28,41 @@ class AssignableDense(object):
 
 
 class StackedAutoEncoder(object):
-    def __init__(self, encoder_dims, input_dim):
+    def __init__(self, encoder_dims, input_dim, w_init=None):
         self.layerwise_autoencoders = []
         
         layer_dims = [input_dim]+encoder_dims
         for i in range(1, len(layer_dims)):
             name = "sae{}".format(i)
             with tf.variable_scope(name):
-                if i==1:
-                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], decode_activation=False)
-                elif i==len(layer_dims)-1:
-                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], encode_activation=False)
+                if i == 1:
+                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], w_init)
+                elif i == len(layer_dims)-1:
+                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], w_init)
                 else:
-                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1])
+                    sub_ae = AutoEncoder([layer_dims[i]], layer_dims[i-1], w_init)
                 self.layerwise_autoencoders.append(sub_ae)
 
 
 class AutoEncoder(object):
-    def __init__(self, encoder_dims, input_dim, encode_activation=True, decode_activation=True):
+    def __init__(self, encoder_dims, input_dim, w_init=None):
         self.input_ = tf.placeholder(tf.float32, shape=[None, input_dim])
         self.input_batch_size = tf.placeholder(tf.int32, shape=())
         self.keep_prob = tf.placeholder(tf.float32)
         
         self.layers = []
-        # w_init = tf.keras.initializers.glorot_normal()
-        w_init = tf.keras.initializers.glorot_uniform()
-        # w_init = tf.random_normal_initializer(stddev=0.01)
+        if w_init is None:
+            w_init = tf.keras.initializers.glorot_normal()
+        elif isinstance(w_init, str):
+            if w_init == "glorot_uniform":
+                w_init = tf.keras.initializers.glorot_uniform()
+            elif w_init == "random_normal":
+                w_init = tf.random_normal_initializer(stddev=0.01)
+            else:
+                raise ValueError("unknown initialize function!")
+        else:
+            raise ValueError("initialize function only support string type now!")
+
         b_init = tf.constant_initializer(0.)
 
         with tf.variable_scope("encoder"):
@@ -105,7 +114,7 @@ class AutoEncoder(object):
         for i, dim in enumerate(dims):
             with tf.variable_scope("fully_layer_{}_{}".format(name, i)):
                 layer = tf.nn.dropout(layer, keep_prob=self.keep_prob)
-                if last_activation==False and i==len(dims)-1:
+                if last_activation is False and i == len(dims)-1:
                     dense = AssignableDense(layer, units=dim, activation=None)
                 else:
                     dense = AssignableDense(layer, units=dim, activation=tf.nn.relu)
@@ -118,7 +127,7 @@ class DEC(object):
     def __init__(self, params):
         self.n_cluster = params["n_clusters"]
         self.kmeans = KMeans(n_clusters=params["n_clusters"], n_init=100)
-        self.ae = AutoEncoder(params["encoder_dims"], params['input_dim'], encode_activation=False, decode_activation=False)
+        self.ae = AutoEncoder(params["encoder_dims"], params['input_dim'], params["w_init"])
         self.alpha = params['alpha']
 
         with tf.name_scope("distribution"):
@@ -225,7 +234,8 @@ class DEC_AAE(object):
             "encoder_dims": params["encoder_dims"],
             "n_clusters": params["n_clusters"],
             "input_dim": params['input_dim'],
-            "alpha": 1.0
+            "alpha": 1.0,
+            "w_init": params["w_init"]
         })
         learn_rate = params["learn_rate"]
         discriminator_dims = params["discriminator_dims"]

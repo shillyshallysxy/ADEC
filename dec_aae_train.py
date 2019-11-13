@@ -50,9 +50,11 @@ def train(dataset,
     if dataset == 'MNIST':
         data = MNIST()
         data_name = ""
+        w_init = "random_normal"
     elif dataset == "StackOverflow":
         data = StackOverflow()
         data_name = dataset
+        w_init = "glorot_uniform"
     else:
         assert False, "Undefined dataset."
     logger.info("running on data set: {}".format(dataset))
@@ -63,7 +65,8 @@ def train(dataset,
         "input_dim": data.feature_dim,
         "alpha": 1.0,
         "discriminator_dims": discriminator_dims,
-        "learn_rate": learn_rate
+        "learn_rate": learn_rate,
+        "w_init": w_init
     })
 
     ae_saver = tf.train.Saver(var_list=dec_aae_model.ae_vars, max_to_keep=None)
@@ -181,8 +184,6 @@ def train(dataset,
     else:
         aae_ckpt_path = pretrained_aae_ckpt_path
 
-
-
     # phase 3: parameter optimization
     dec_ckpt_path = os.path.join('dec_ckpt', 'model{}.ckpt'.format(data_name))
     t_ckpt_path = os.path.join('adver_ckpt', 'model{}.ckpt'.format(data_name))
@@ -193,9 +194,6 @@ def train(dataset,
         dec_mode = False
         idec_mode = True
         best_score = 0.
-        #  dec_mode = False, idec_mode = True  ==> IDEC
-        #  dec_mode = True, idec_mode = False  ==> DEC
-        #  dec_mode = False, idec_mode = False  ==> ADEC
         if dec_mode or idec_mode:
             if retrain:
                 logger.info("retraining the dec")
@@ -242,6 +240,7 @@ def train(dataset,
                 assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
                 _ = sess.run(assign_mu_op)
 
+        p = None
         for cur_epoch in range(1):
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
@@ -298,10 +297,10 @@ def train(dataset,
                                                      dec_aae_model.batch_size: data.train_x.shape[0],
                                                      dec_aae_model.keep_prob: 1.0})
                     now_score = dec_aae_model.dec.cluster_acc(total_y, total_pred)
+                    logger.info("[Total DEC] iteration: {}\tloss: {}\tacc: {}".format(iter_, loss, now_score))
                     if now_score > best_score:
                         best_score = now_score
                         saver.save(sess, t_ckpt_path)
-                    logger.info("[Total DEC] iteration: {}\tloss: {}\tacc: {}".format(iter_, loss, now_score))
             if (cur_epoch+1) % 5 == 0 or cur_epoch == 0:
                 xmlr_x = data.train_x[:10000, :]
                 xmlr_id = data.train_y[:10000]
