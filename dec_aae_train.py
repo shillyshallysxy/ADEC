@@ -51,6 +51,7 @@ def train(dataset,
         discriminator_dims = [1000, 1]
         stack_ae = False
         update_interval = 500
+        aae_finetune_iteration = 50000
     elif dataset == "StackOverflow":
         data = StackOverflow()
         data_name = dataset
@@ -144,7 +145,7 @@ def train(dataset,
             # ae_saver.restore(sess, ae_ckpt_path)
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
-                                                                                       iteration=10000)):
+                                                                                       iteration=aae_finetune_iteration)):
                 z_sample, z_id_one_hot, z_id_ = \
                     prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim)
                 train_dec_feed = {dec_aae_model.input_: batch_x,

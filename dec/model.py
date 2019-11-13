@@ -289,9 +289,11 @@ class DEC_AAE(object):
 
         # 预训练阶段
         pre_train_ae_learning_rate = 0.001
-        self.train_op_ae = tf.train.MomentumOptimizer(pre_train_ae_learning_rate, 0.9).minimize(self.ae_loss, var_list=self.ae_vars)
-        self.train_op_d = tf.train.MomentumOptimizer(pre_train_ae_learning_rate/10., 0.9).minimize(self.D_loss, var_list=self.d_vars)
-        self.train_op_g = tf.train.MomentumOptimizer(pre_train_ae_learning_rate, 0.9).minimize(self.G_loss, var_list=self.g_vars)
+        # pre_train_method = tf.train.MomentumOptimizer
+        pre_train_method = tf.train.AdamOptimizer
+        self.train_op_ae = pre_train_method(pre_train_ae_learning_rate, 0.9).minimize(self.ae_loss, var_list=self.ae_vars)
+        self.train_op_d = pre_train_method(pre_train_ae_learning_rate/10., 0.9).minimize(self.D_loss, var_list=self.d_vars)
+        self.train_op_g = pre_train_method(pre_train_ae_learning_rate, 0.9).minimize(self.G_loss, var_list=self.g_vars)
 
         # short text 预训练阶段
         # self.train_op_ae = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).minimize(self.ae_loss, var_list=self.ae_vars)
