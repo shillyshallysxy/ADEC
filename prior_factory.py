@@ -61,6 +61,17 @@ def gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
         return z
 
 
+def multi_gaussian(batch_size, n_dim, var=1, mu=None, label_indices=None):
+    def sample(label):
+        z_ = np.random.normal(mu[label], np.ones_like(mu[label])*var)
+        return z_
+
+    z = np.empty((batch_size, n_dim), dtype=np.float32)
+    for batch in range(batch_size):
+        z[batch] = sample(label_indices[batch])
+    return z
+
+
 def gaussian_mixture(batch_size, n_dim=2, n_labels=10, x_var=0.5, y_var=0.1, label_indices=None):
 
     def sample(x, y, label, n_labels):
@@ -111,7 +122,7 @@ def dirichlet(batch_size, n_dim=10):
     return z
 
 
-def get_sample(prior_type, batch_size, z_dim, n_labels=10):
+def get_sample(prior_type, batch_size, z_dim, n_labels=10, mu=None, var=None):
     if prior_type == 'mixGaussian':
         z_id_ = np.random.randint(0, n_labels, size=[batch_size])
         samples = gaussian_mixture(batch_size, z_dim, label_indices=z_id_)
@@ -130,10 +141,18 @@ def get_sample(prior_type, batch_size, z_dim, n_labels=10):
     elif prior_type == 'dirichlet':
         z_id_ = np.random.randint(0, n_labels, size=[batch_size])
         samples = dirichlet(batch_size, z_dim)
+    elif prior_type == 'loc_normal':
+        z_id_ = np.random.randint(0, n_labels, size=[batch_size])
+        if mu is None:
+            raise ValueError("这里需要一个mu作为初始化")
+        if var is None:
+            # var = 0.5
+            var = (mu.max()-mu.min())/(4*mu.shape[0])
+        samples = multi_gaussian(batch_size, z_dim, mu=mu, label_indices=z_id_, var=var)
     else:
         raise ValueError("没有这种类型的先验定义")
     if z_id_ is not None:
-        z_id_one_hot_vector = np.zeros((batch_size, 10))
+        z_id_one_hot_vector = np.zeros((batch_size, n_labels))
         z_id_one_hot_vector[np.arange(batch_size), z_id_] = 1
     else:
         z_id_one_hot_vector = None
@@ -141,6 +160,6 @@ def get_sample(prior_type, batch_size, z_dim, n_labels=10):
 
 
 if __name__ == "__main__":
-    a, b, c = get_sample("uniform_lab", 5000, 10)
+    a, b, c = get_sample("loc_normal", 5000, 2, mu=np.random.uniform(low=-10, high=10, size=(20, 2)), n_labels=20)
     import plot_utils as pu
     pu.save_scattered_image(a, c, "./results/uniform_lab.jpg")

@@ -24,7 +24,7 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
-logger.info = print
+# logger.info = print
 tf.reset_default_graph()
 
 
@@ -45,11 +45,11 @@ def train(dataset,
 
     if dataset == 'MNIST':
         data = MNIST()
-        data_name = ""
+        data_name = "MNIST"
         w_init = "random_normal"
         encoder_dims = [500, 500, 2000, 10]
         discriminator_dims = [1000, 1]
-        stack_ae = False
+        stack_ae = True
         update_interval = 500
         aae_finetune_iteration = 50000
     elif dataset == "StackOverflow":
@@ -58,7 +58,7 @@ def train(dataset,
         encoder_dims = [500, 500, 2000, 20]
         discriminator_dims = [1000, 1]
         w_init = "glorot_uniform"
-        stack_ae = True
+        stack_ae = False
         update_interval = 100
         aae_finetune_iteration = 50000
     else:
@@ -154,7 +154,7 @@ def train(dataset,
         # aae_ckpt_path = os.path.join('aae_ckpt', 'model.ckpt-100000')
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
-            # ae_saver.restore(sess, ae_ckpt_path)
+            ae_saver.restore(sess, ae_ckpt_path)
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
                                                                                        iteration=aae_finetune_iteration)):
@@ -164,10 +164,11 @@ def train(dataset,
                                   dec_aae_model.batch_size: batch_x.shape[0],
                                   dec_aae_model.keep_prob: 0.9,
                                   dec_aae_model.z_sample: z_sample,}
-                # reconstruction loss
-                _, ae_loss = sess.run(
-                    (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
-                #
+                for _ in range(2):
+                    # reconstruction loss
+                    _, ae_loss = sess.run(
+                        (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
+                    #
                 # discriminator loss
                 _, d_loss = sess.run(
                     (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
@@ -192,6 +193,14 @@ def train(dataset,
                                  feed_dict={dec_aae_model.input_: xmlr_x, dec_aae_model.keep_prob: 1.0})
                     # pu.save_scattered_image(z, xmlr_id, "./results/z_map_{}.jpg".format(iter_))
                     pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_aae_map_{}.jpg".format(iter_)))
+
+                    pred_y = np.argmax(z, axis=1)
+                    logger.info("[Total DEC] iteration: {}\targ_acc: {}".
+                                format(iter_, dec_aae_model.dec.cluster_acc(xmlr_id, pred_y)))
+                    kmeans = KMeans(n_clusters=10, n_init=20)
+                    pred_y = kmeans.fit_predict(z)
+                    logger.info("[Total DEC] iteration: {}\tkmeans_acc: {}".
+                                format(iter_, dec_aae_model.dec.cluster_acc(xmlr_id, pred_y)))
             aae_saver.save(sess, aae_ckpt_path)
 
         pool_.close()  # 关闭进程池，表示不能在往进程池中添加进程

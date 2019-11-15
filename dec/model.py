@@ -275,7 +275,7 @@ class DEC_AAE(object):
         self.dec_loss = self.dec.loss
         self.idec_loss = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss)
         # self.adec_loss = tf.reduce_mean(self.dec_loss+self.ae_loss+0.01*self.G_loss)
-        self.adec_loss = tf.reduce_mean(self.dec_loss+self.ae_loss+0.1*self.G_loss+0.1*self.D_loss)
+        self.adec_loss = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss+self.G_loss+0.1*self.D_loss)
         self.adec_loss_s = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss+0.01*self.G_loss+0.01*self.D_loss)
 
         # optimization
@@ -309,7 +309,8 @@ class DEC_AAE(object):
 
         self.train_op_dec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.dec_loss, var_list=self.dec_vars)
         self.train_op_idec = tf.train.AdamOptimizer(learn_rate, beta1=0.9, beta2=0.999).minimize(self.idec_loss, var_list=self.idec_vars)
-        self.train_op_adec = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss, var_list=self.adec_vars)
+        # self.train_op_adec = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss, var_list=self.adec_vars)
+        self.train_op_adec = tf.train.AdamOptimizer(learn_rate).minimize(self.adec_loss, var_list=self.adec_vars)
         self.train_op_adec_s = tf.train.MomentumOptimizer(learn_rate, 0.99).minimize(self.adec_loss_s, var_list=self.adec_vars)
 
         self.y = self.dec.ae.decoder
