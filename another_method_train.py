@@ -29,7 +29,7 @@ tf.reset_default_graph()
 
 
 def train(dataset,
-          learn_rate=1e-3,
+          learn_rate=1e-4,
           prior_type='uniform',
           pretrained_ae_ckpt_path=None,
           pretrained_aae_ckpt_path=None):
@@ -43,8 +43,8 @@ def train(dataset,
     if dataset == 'MNIST':
         data = MNIST()
         data_name = "MNIST"
-        w_init = "random_normal"
-        encoder_dims = [500, 500, 2000, 10]
+        w_init = "kaiming_uniform"
+        encoder_dims = [500, 500, 1000, 10]
         discriminator_dims = [1000, 1]
         stack_ae = True
         update_interval = 100
@@ -52,7 +52,10 @@ def train(dataset,
         aae_finetune_iteration = 30000
         initialize_iteration = 50000
         finetune_iteration = 100000
+        finetune_epoch = 200
+        aae_finetune_epoch = 40
         batch_size = 256
+        aae_ae_enhance = 1
     elif dataset == "StackOverflow":
         data = StackOverflow()
         data_name = dataset
@@ -61,10 +64,12 @@ def train(dataset,
         w_init = "glorot_uniform"
         stack_ae = False
         update_interval = 500
-        aae_finetune_iteration = 30000
-        update_aae_mu_interval = 10000
+        aae_finetune_iteration = 5000
+        update_aae_mu_interval = 5000
         finetune_epoch = 15
+        aae_finetune_epoch = None
         batch_size = 64
+        aae_ae_enhance = 1
         finetune_iteration = finetune_epoch*(data.train_y.shape[0]/batch_size)
     else:
         assert False, "Undefined dataset."
@@ -80,13 +85,15 @@ def train(dataset,
         "w_init": w_init
     })
     if dataset == 'MNIST':
-        learning_rate = tf.train.exponential_decay(learning_rate=0.1,
-                                                   global_step=tf.train.get_or_create_global_step(),
-                                                   decay_steps=20000,
-                                                   decay_rate=0.1,
-                                                   staircase=True)
-        dec_aae_model.dec.ae.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).\
-            minimize(dec_aae_model.dec.ae.loss)
+        # learning_rate = tf.train.exponential_decay(learning_rate=0.1,
+        #                                            global_step=tf.train.get_or_create_global_step(),
+        #                                            decay_steps=20000,
+        #                                            decay_rate=0.1,
+        #                                            staircase=True)
+        # dec_aae_model.dec.ae.optimizer = tf.train.MomentumOptimizer(learning_rate, 0.9).\
+        #     minimize(dec_aae_model.dec.ae.loss)
+        dec_aae_model.dec.ae.optimizer = tf.train.AdamOptimizer(0.0001). \
+                minimize(dec_aae_model.dec.ae.loss)
     elif dataset == "StackOverflow":
         dec_aae_model.dec.ae.optimizer = tf.train.AdamOptimizer(0.001, beta1=0.9, beta2=0.999, epsilon=1e-8).\
             minimize(dec_aae_model.dec.ae.loss)
@@ -130,13 +137,14 @@ def train(dataset,
 
             # finetune AE
             for iter_, (batch_x, _, _) in enumerate(data.gen_next_batch(batch_size=batch_size, is_train_set=True,
-                                                                        iteration=finetune_iteration,
+                                                                        # iteration=finetune_iteration,
+                                                                        epoch=finetune_epoch
                                                                         )):
                 _, loss = sess.run([dec_aae_model.dec.ae.optimizer, dec_aae_model.dec.ae.loss], feed_dict={dec_aae_model.dec.ae.input_: batch_x,
                                                                                                            dec_aae_model.dec.ae.keep_prob: 1.0})
                 if iter_%log_interval==0:
                     logger.info("[AE-finetune] iter: {}\tloss: {}".format(iter_, loss))
-                if iter_ % (2*log_interval) == 0:
+                if iter_ % (10*log_interval) == 0:
                     xmlr_x = data.train_x[:10000, :]
                     xmlr_id = data.train_y[:10000]
                     z = sess.run(dec_aae_model.z,
@@ -160,7 +168,7 @@ def train(dataset,
         with tf.Session(config=config) as sess:
             sess.run(tf.global_variables_initializer())
             ae_saver.restore(sess, ae_ckpt_path)
-
+            # aae_saver.restore(sess, aae_ckpt_path)
             z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
             assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
             _ = sess.run(assign_mu_op)
@@ -175,29 +183,31 @@ def train(dataset,
 
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
-                                                                                       iteration=aae_finetune_iteration)):
-                if iter_ % update_aae_mu_interval == 0 and iter_ != 0:
-                    z = sess.run(dec_aae_model.z,
-                                 feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
-                    assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
-                    _ = sess.run(assign_mu_op)
-                    mu = sess.run(dec_aae_model.dec.mu)
+                                                                                       # iteration=aae_finetune_iteration,
+                                                                                       epoch=aae_finetune_epoch,
+                                                                                       )):
+                # if iter_ % update_aae_mu_interval == 0 and iter_ != 0:
+                #     z = sess.run(dec_aae_model.z,
+                #                  feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
+                #     assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
+                #     _ = sess.run(assign_mu_op)
+                #     mu = sess.run(dec_aae_model.dec.mu)
 
                 z_sample, z_id_one_hot, z_id_ = \
                     prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim, n_labels=data.num_classes, mu=mu)
                 train_dec_feed = {dec_aae_model.input_: batch_x,
                                   dec_aae_model.batch_size: batch_x.shape[0],
-                                  dec_aae_model.keep_prob: 0.9,
+                                  dec_aae_model.keep_prob: 1,
                                   dec_aae_model.z_sample: z_sample,}
 
-                if iter_ < 100:
-                    # discriminator loss
-                    _, d_loss = sess.run(
-                        (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
-                    logger.info("[ADVER] epoch %d:  d_loss %03.2f" % (
-                        iter_, d_loss))
-                    continue
-                for _ in range(2):
+                # if iter_ < 100:
+                #     # discriminator loss
+                #     _, d_loss = sess.run(
+                #         (dec_aae_model.train_op_d, dec_aae_model.D_loss), feed_dict=train_dec_feed)
+                #     logger.info("[ADVER] epoch %d:  d_loss %03.2f" % (
+                #         iter_, d_loss))
+                #     continue
+                for _ in range(aae_ae_enhance):
                     # reconstruction loss
                     _, ae_loss = sess.run(
                         (dec_aae_model.train_op_ae, dec_aae_model.ae_loss), feed_dict=train_dec_feed)
@@ -215,9 +225,9 @@ def train(dataset,
                 #
                 if iter_ % 500 == 0:
                     # logger.info cost every epoch
-                    logger.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                    logger.info("[ADVER] epoch %d: L_tot %03.4f L_likelihood %03.4f d_loss %03.2f g_loss %03.4f" % (
                         iter_, tot_loss, ae_loss, d_loss, g_loss))
-                if iter_ % 1000 == 0:
+                if iter_ % 2500 == 0:
                     # logger.info cost every epoch
 
                     xmlr_x = data.train_x[:10000, :]
@@ -226,19 +236,19 @@ def train(dataset,
                                  feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
                     # pu.save_scattered_image(z, xmlr_id, "./results/z_map_{}.jpg".format(iter_))
 
-                    pred_y = sess.run(dec_aae_model.dec.pred,
-                                 feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0,
-                                            dec_aae_model.batch_size: data.train_x.shape[0]
-                                            })
-                    logger.info("[Total DEC] iteration: {}\targ_acc: {}".
-                                format(iter_, dec_aae_model.dec.cluster_acc(data.train_y, pred_y)))
-
-                    kmeans = KMeans(n_clusters=data.num_classes, n_init=20)
-                    pred_y = kmeans.fit_predict(z)
-                    logger.info("[Total DEC] iteration: {}\tkmeans_acc: {}".
-                                format(iter_, dec_aae_model.dec.cluster_acc(data.train_y, pred_y)))
+                    # pred_y = sess.run(dec_aae_model.dec.pred,
+                    #              feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0,
+                    #                         dec_aae_model.batch_size: data.train_x.shape[0]
+                    #                         })
+                    # logger.info("[Total DEC] iteration: {}\targ_acc: {}".
+                    #             format(iter_, dec_aae_model.dec.cluster_acc(data.train_y, pred_y)))
+                    #
+                    # kmeans = KMeans(n_clusters=data.num_classes, n_init=20)
+                    # pred_y = kmeans.fit_predict(z)
+                    # logger.info("[Total DEC] iteration: {}\tkmeans_acc: {}".
+                    #             format(iter_, dec_aae_model.dec.cluster_acc(data.train_y, pred_y)))
                     z = z[:10000]
-                    pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_aae_map_{}.jpg".format(iter_), pred_y[:10000]))
+                    pool_.apply_async(pu.save_scattered_image, (z, xmlr_id, "./results/z_aae_map_{}.jpg".format(iter_)))
 
             aae_saver.save(sess, aae_ckpt_path)
 
@@ -290,6 +300,17 @@ def train(dataset,
                                                                          dec_aae_model.keep_prob: 1.0})
                 logger.info("[Total DEC] epoch: {}\tacc: {}".
                             format(-1, dec_aae_model.dec.cluster_acc(total_y, total_pred)))
+
+                # print("sstart")
+                # total_y = total_y[:10000]
+                # z = z[:10000]
+                # from sklearn.manifold import TSNE
+                # z = TSNE(n_components=2, learning_rate=100).fit_transform(z)
+                # kmeans = KMeans(n_clusters=data.num_classes, n_init=20)
+                # pred_y = kmeans.fit_predict(z)
+                # print(pu.cluster_acc(total_y, pred_y))
+                # exit()
+
         else:
             if retrain:
                 logger.info("retraining the adec")
@@ -297,23 +318,33 @@ def train(dataset,
                 saver.restore(sess, t_ckpt_path)
             else:
                 logger.info("training the adec")
-                # aae_saver.restore(sess, aae_ckpt_path)
-                ae_saver.restore(sess, ae_ckpt_path)
+                aae_saver.restore(sess, aae_ckpt_path)
+                # ae_saver.restore(sess, ae_ckpt_path)
                 bais = 0
                 # initialize mu
                 z = sess.run(dec_aae_model.z, feed_dict={dec_aae_model.input_: data.train_x, dec_aae_model.keep_prob: 1.0})
                 assign_mu_op = dec_aae_model.dec.get_assign_cluster_centers_op(z)
                 _ = sess.run(assign_mu_op)
 
+                total_y = data.train_y
+                total_pred = sess.run(dec_aae_model.dec.pred, feed_dict={dec_aae_model.input_: data.train_x,
+                                                                         dec_aae_model.batch_size: data.train_x.shape[
+                                                                             0],
+                                                                         dec_aae_model.keep_prob: 1.0})
+                logger.info("[Total ADEC] epoch: {}\tacc: {}".
+                            format(-1, dec_aae_model.dec.cluster_acc(total_y, total_pred)))
+                pool_.apply_async(pu.save_scattered_image,
+                                  (z[:10000, ], total_y[:10000], "./results/z_adec_map_{}.jpg".format(-1), total_pred[:10000]))
+
         mu = sess.run(dec_aae_model.dec.mu)
         p = None
-        for cur_epoch in range(1):
+        for cur_epoch in range(100):
             for iter_, (batch_x, batch_y, batch_idxs) in enumerate(data.gen_next_batch(batch_size=batch_size,
                                                                                        is_train_set=True,
-                                                                                       # epoch=1,
-                                                                                       iteration=50000
+                                                                                       epoch=1,
+                                                                                       # iteration=50000
                                                                                        )):
-                if iter_ % update_interval == 0:
+                if cur_epoch % 10 == 0 and iter_ == 0:
                     q = sess.run(dec_aae_model.dec.q, feed_dict={
                         dec_aae_model.input_: data.train_x,
                         dec_aae_model.batch_size: data.train_x.shape[0],
@@ -335,7 +366,7 @@ def train(dataset,
 
                 # ==========================adversial part ============================
                 z_sample, z_id_one_hot, z_id_ = \
-                    prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim, mu=mu)
+                    prior.get_sample(prior_type, batch_size, dec_aae_model.z_dim, n_labels=data.num_classes, mu=mu)
                 train_dec_feed.update({
                                   dec_aae_model.z_sample: z_sample,
                                   })
@@ -376,11 +407,13 @@ def train(dataset,
                                           feed_dict={dec_aae_model.input_: data.train_x,
                                                      dec_aae_model.batch_size: data.train_x.shape[0],
                                                      dec_aae_model.keep_prob: 1.0})
-                    now_score = dec_aae_model.dec.cluster_acc(total_y, total_pred)
+                    now_score = pu.cluster_acc(total_y, total_pred)
+                    now_nmi = pu.cluster_nmi(total_y, total_pred)
                     if adec_mode:
-                        logger.info("[ADVER] epoch %d: L_tot %03.2f L_likelihood %03.2f d_loss %03.2f g_loss %03.2f" % (
+                        logger.info("[ADVER] epoch %d: L_tot %03.4f L_likelihood %03.4f d_loss %03.2f g_loss %03.4f" % (
                             cur_epoch, tot_loss, ae_loss, d_loss, g_loss))
-                    logger.info("[Total DEC] iteration: {}\tloss: {}\tacc: {}".format(iter_, loss, now_score))
+                    logger.info("[Total DEC] iteration: {}\tloss: {}\tacc: {}\tnmi: {}".
+                                format(iter_, loss, now_score, now_nmi))
                     if now_score > best_score:
                         best_score = now_score
                         saver.save(sess, t_ckpt_path)
@@ -412,8 +445,8 @@ if __name__ == "__main__":
     parser.add_argument("--gpu-index", dest="gpu_index", help="GPU Index Number", default="0", type=str)
     parser.add_argument("--prior_type", dest="prior_type",
                         help="[mixGaussian, uniform, swiss_roll, normal, dirichlet, loc_normal]",
-                        default="loc_normal", type=str)
-    parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="StackOverflow", type=str)
+                        default="normal", type=str)
+    parser.add_argument("--data_name", dest="data_name", help="[MNIST, StackOverflow]", default="MNIST", type=str)
     args = parser.parse_args()
 
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_index
@@ -421,8 +454,8 @@ if __name__ == "__main__":
     train(dataset=args.data_name,
           pretrained_ae_ckpt_path='./ae_ckpt/model{}.ckpt'.format(args.data_name),
           # pretrained_ae_ckpt_path=None,
-          # pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
-          pretrained_aae_ckpt_path=None,
+          pretrained_aae_ckpt_path='./aae_ckpt/model{}.ckpt'.format(args.data_name),
+          # pretrained_aae_ckpt_path=None,
           prior_type=args.prior_type,
           )
 

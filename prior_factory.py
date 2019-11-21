@@ -130,7 +130,7 @@ def get_sample(prior_type, batch_size, z_dim, n_labels=10, mu=None, var=None):
         z_id_ = np.random.randint(0, n_labels, size=[batch_size])
         samples = swiss_roll(batch_size, z_dim, label_indices=z_id_)
     elif prior_type == 'normal':
-        samples = gaussian(batch_size, z_dim, use_label_info=False)
+        samples = gaussian(batch_size, z_dim, use_label_info=False) * 5.0
         z_id_ = None
     elif prior_type == 'uniform':
         samples = uniform(batch_size, z_dim, label_indices=None)
@@ -147,7 +147,7 @@ def get_sample(prior_type, batch_size, z_dim, n_labels=10, mu=None, var=None):
             raise ValueError("这里需要一个mu作为初始化")
         if var is None:
             # var = 0.5
-            var = (mu.max()-mu.min())/(4*mu.shape[0])
+            var = (mu.max()-mu.min())/(3*mu.shape[0])
         samples = multi_gaussian(batch_size, z_dim, mu=mu, label_indices=z_id_, var=var)
     else:
         raise ValueError("没有这种类型的先验定义")

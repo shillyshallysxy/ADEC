@@ -58,6 +58,10 @@ class AutoEncoder(object):
                 w_init = tf.keras.initializers.glorot_uniform()
             elif w_init == "random_normal":
                 w_init = tf.random_normal_initializer(stddev=0.01)
+            elif w_init == "kaiming_uniform":
+                w_init = tf.keras.initializers.lecun_uniform()
+            elif w_init == "glorot_normal":
+                w_init = tf.keras.initializers.glorot_normal()
             else:
                 raise ValueError("unknown initialize function!")
         else:
@@ -275,7 +279,7 @@ class DEC_AAE(object):
         self.dec_loss = self.dec.loss
         self.idec_loss = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss)
         # self.adec_loss = tf.reduce_mean(self.dec_loss+self.ae_loss+0.01*self.G_loss)
-        self.adec_loss = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss+self.G_loss+0.1*self.D_loss)
+        self.adec_loss = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss+0.1*self.G_loss)
         self.adec_loss_s = tf.reduce_mean(0.1*self.dec_loss+self.ae_loss+0.01*self.G_loss+0.01*self.D_loss)
 
         # optimization
@@ -286,16 +290,16 @@ class DEC_AAE(object):
         self.ae_vars = self.de_vars + self.g_vars
         self.dec_vars = [var for var in t_vars if "distribution" in var.name] + self.g_vars
         self.idec_vars = self.dec_vars + self.de_vars
-        # self.adec_vars = self.dec_vars + self.de_vars
-        self.adec_vars = self.dec_vars + self.de_vars + self.d_vars
+        self.adec_vars = self.dec_vars + self.de_vars
+        # self.adec_vars = self.dec_vars + self.de_vars + self.d_vars
 
         # 预训练aae阶段
-        pre_train_ae_learning_rate = 0.001
+        pre_train_ae_learning_rate = 0.0001
         # pre_train_method = tf.train.MomentumOptimizer
         pre_train_method = tf.train.AdamOptimizer
-        self.train_op_ae = pre_train_method(pre_train_ae_learning_rate, 0.9).minimize(self.ae_loss, var_list=self.ae_vars)
-        self.train_op_d = pre_train_method(pre_train_ae_learning_rate/10., 0.9).minimize(self.D_loss, var_list=self.d_vars)
-        self.train_op_g = pre_train_method(pre_train_ae_learning_rate, 0.9).minimize(self.G_loss, var_list=self.g_vars)
+        self.train_op_ae = pre_train_method(pre_train_ae_learning_rate).minimize(self.ae_loss, var_list=self.ae_vars)
+        self.train_op_d = pre_train_method(pre_train_ae_learning_rate/10).minimize(self.D_loss, var_list=self.d_vars)
+        self.train_op_g = pre_train_method(pre_train_ae_learning_rate/10).minimize(self.G_loss, var_list=self.g_vars)
 
         # short text 训练阶段
         # self.train_op_dec = tf.train.MomentumOptimizer(0.1, 0.9).minimize(self.dec_loss, var_list=self.dec_vars)
